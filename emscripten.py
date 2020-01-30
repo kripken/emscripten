@@ -1839,6 +1839,39 @@ Module['%(full)s'] = function() {
   return '\n'.join(accessors)
 
 
+def create_dl_accessors(metadata):
+  if not shared.Settings.RELOCATABLE:
+    return ''
+
+  # Create `dl$XXX` handlers for setting the functions to their respective slots
+  # and calling the target function.
+  # SIDE_MODULEs still use the fp$XXX handlers.
+  accessors = []
+  for fullname in metadata['declares']:
+    if not fullname.startswith('dl$'):
+      continue
+    _, name, sig = fullname.split('$')
+    mangled = asmjs_mangle(name)
+    funcIdx = 'g$' + mangled[1:]
+    side = 'parent' if shared.Settings.SIDE_MODULE else ''
+    assertion = ('\n  assert(%sModule["%s"] || typeof %s !== "undefined", "external function `%s` is missing.' % (side, mangled, mangled, name) +
+                 'perhaps a side module was not linked in? if this symbol was expected to arrive '
+                 'from a system library, try to build the MAIN_MODULE with '
+                 'EMCC_FORCE_STDLIBS=XX in the environment");')
+
+    accessors.append('''
+Module['%(full)s'] = function() {
+  %(assert)s
+  var func = Module['%(mangled)s'];
+  if (!func)
+    func = %(mangled)s;
+  var fp = setFunction(func, '%(sig)s', NAMED_GLOBALS['%(funcIdx)s']);
+  return func.apply(null, arguments);
+}
+''' % {'full': asmjs_mangle(fullname), 'mangled': mangled, 'assert': assertion, 'sig': sig, 'funcIdx': funcIdx})
+
+  return '\n'.join(accessors)
+
 def create_named_globals(metadata):
   if not shared.Settings.RELOCATABLE:
     return ''
@@ -2346,6 +2379,8 @@ def finalize_wasm(temp_files, infile, outfile, memfile, DEBUG):
     # initializer?
     if shared.Settings.RELOCATABLE:
       args.append('--global-base=0')
+      table_base = '1' if shared.Settings.WASM_BACKEND else '0'
+      args.append('--table-base=%s' % table_base)
     else:
       args.append('--global-base=%s' % shared.Settings.GLOBAL_BASE)
   if shared.Settings.WASM_BACKEND and shared.Settings.STACK_OVERFLOW_CHECK >= 2:
@@ -2729,6 +2764,7 @@ def create_module_wasm(sending, receiving, invoke_funcs, metadata):
   invoke_wrappers = create_invoke_wrappers(invoke_funcs)
   receiving += create_named_globals(metadata)
   receiving += create_fp_accessors(metadata)
+  receiving += create_dl_accessors(metadata)
   module = []
   module.append('var asmGlobalArg = {};\n')
   if shared.Settings.USE_PTHREADS and not shared.Settings.WASM:
