@@ -2197,8 +2197,25 @@ def emscript_wasm_backend(infile, outfile, memfile, temp_files, DEBUG):
   #   * Run wasm-emscripten-finalize to extract metadata and modify the binary
   #     to use emscripten's wasm<->JS ABI
   #   * Use the metadata to generate the JS glue that goes with the wasm
+  if shared.Settings.MAIN_MODULE:
+    # Run compile_settings here to retrieve all the JS library functions.
+    # Unfortunately, we need to run it later again to capture the exported functions
+    # from the Wasm
+    glue, forwarded_data = compile_settings(compiler_engine, temp_files)
+    forwarded_json = json.loads(forwarded_data)
+    library_fns = forwarded_json['Functions']['libraryFunctions']
+    library_fns_list = []
+    for name in library_fns:
+      library_fns_list.append(name)
 
-  metadata = finalize_wasm(temp_files, infile, outfile, memfile, DEBUG)
+    js_symbols = infile + '.js_symbols'
+    with open(js_symbols, 'w') as js_symbols_file:
+      for sym in library_fns_list:
+        js_symbols_file.write(sym + '\n')
+  else:
+    js_symbols = []
+
+  metadata = finalize_wasm(temp_files, infile, outfile, memfile, DEBUG, js_symbols)
 
   update_settings_glue(metadata, DEBUG)
 
@@ -2309,7 +2326,7 @@ def remove_trailing_zeros(memfile):
     f.write(mem_data[:end])
 
 
-def finalize_wasm(temp_files, infile, outfile, memfile, DEBUG):
+def finalize_wasm(temp_files, infile, outfile, memfile, DEBUG, libraryfile):
   basename = shared.unsuffixed(outfile.name)
   wasm = basename + '.wasm'
   base_wasm = infile
@@ -2358,6 +2375,9 @@ def finalize_wasm(temp_files, infile, outfile, memfile, DEBUG):
     args.append('--pass-arg=legalize-js-interface-export-originals')
   if shared.Settings.DEBUG_LEVEL >= 3:
     args.append('--dwarf')
+
+  if shared.Settings.MAIN_MODULE and libraryfile:
+    args.append('--pass-arg=js-symbols@%s' % libraryfile)
   stdout = shared.Building.run_binaryen_command('wasm-emscripten-finalize',
                                                 infile=base_wasm,
                                                 outfile=wasm,
