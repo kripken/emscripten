@@ -123,6 +123,10 @@ v1.39.13: 04/17/2020
   so that generated code works both in normal web and in a webview like Cordova.
   See #10846
 
+- `EM_ASM_`, `EM_ASM_ARGS`, `EM_ASM_INT_V` has been removed in favor of using
+  `EM_ASM_INT`. `EM_ASM_DOUBLE_V` has been removed in favor of using
+  `EM_ASM_DOUBLE`.
+
 v1.39.12: 04/09/2020
 --------------------
 - Pass linker flags directly to wasm-ld by default.  We still filter out certain
