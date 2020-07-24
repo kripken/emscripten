@@ -8024,6 +8024,10 @@ Module['onRuntimeInitialized'] = function() {
     'unconditional': (False,),
   })
   def test_emscripten_lazy_load_code(self, conditional):
+    # don't minify JS whitespace, as it includes the entire program in the
+    # stack trace, which confuses our checking if the expected text is in
+    # the output
+    self.emcc_args += ['-g1']
     self.set_setting('ASYNCIFY', 1)
     self.set_setting('ASYNCIFY_LAZY_LOAD_CODE', 1)
     self.set_setting('ASYNCIFY_IGNORE_INDIRECT', 1)
@@ -8369,6 +8373,10 @@ NODEFS is no longer included by default; build with -lnodefs.js
     # compilation failed handler, and will be printed to stderr.
     self.add_post_run('ThisFunctionDoesNotExist()')
     src = open(path_from_root('tests', 'core', 'test_hello_world.c')).read()
+    # don't minify JS whitespace, as it includes the entire program in the
+    # stack trace, which confuses our checking if the expected text is in
+    # the output
+    self.emcc_args += ['-g1']
     self.build(src, self.get_dir(), 'src.c')
     output = self.run_js('src.c.o.js', assert_returncode=NON_ZERO)
     self.assertStartswith(output, 'hello, world!')
