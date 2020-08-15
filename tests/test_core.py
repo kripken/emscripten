@@ -4337,44 +4337,42 @@ res64 - external 64\n''', header='''
     ''', expected=['12345\n'])
 
   @needs_dlfcn
-  def test_dylink_syslibs(self): # one module uses libcxx, need to force its inclusion when it isn't the main
-    # https://github.com/emscripten-core/emscripten/issues/10571
-    return self.skipTest('Currently not working due to duplicate symbol errors in wasm-ld')
+  @parameterized({
+    'libcxx': ('libc,libc++,libmalloc,libc++abi,libpthread',),
+    'all': ('1',),
+    'libc': ('libc,libmalloc,libpthread', False, False, False),
+    'none_assertions': ('libc,libmalloc,libpthread', False, False, True),
+  })
+  def test_dylink_syslibs(self, syslibs, expect_pass=True, need_reverse=True, assertions=True):
+    # one module uses libcxx, need to force its inclusion when it isn't the main
 
-    def test(syslibs, expect_pass=True, need_reverse=True):
-      print('syslibs', syslibs, self.get_setting('ASSERTIONS'))
-      passed = True
-      try:
-        with env_modify({'EMCC_FORCE_STDLIBS': syslibs}):
-          self.dylink_test(main=r'''
-            void side();
-            int main() {
-              side();
-              return 0;
-            }
-          ''', side=r'''
-            #include <iostream>
-            void side() { std::cout << "cout hello from side\n"; }
-          ''', expected=['cout hello from side\n'], need_reverse=need_reverse, assert_returncode=NON_ZERO)
-      except Exception as e:
-        if expect_pass:
-          raise
-        print('(seeing expected fail)')
-        passed = False
-        assertion = 'build the MAIN_MODULE with EMCC_FORCE_STDLIBS=1 in the environment'
-        if self.get_setting('ASSERTIONS'):
-          self.assertContained(assertion, str(e))
-        else:
-          self.assertNotContained(assertion, str(e))
-      assert passed == expect_pass, ['saw', passed, 'but expected', expect_pass]
+    if assertions is not None:
+      self.set_setting('ASSERTIONS', int(assertions))
 
-    test('libc++')
-    test('1')
-    if not self.has_changed_setting('ASSERTIONS'):
-      self.set_setting('ASSERTIONS', 0)
-      test('', expect_pass=False, need_reverse=False)
-      self.set_setting('ASSERTIONS', 1)
-      test('', expect_pass=False, need_reverse=False)
+    passed = True
+    try:
+      with env_modify({'EMCC_FORCE_STDLIBS': syslibs, 'EMCC_ONLY_FORCED_STDLIBS': '1'}):
+        self.dylink_test(main=r'''
+          void side();
+          int main() {
+            side();
+            return 0;
+          }
+        ''', side=r'''
+          #include <iostream>
+          void side() { std::cout << "cout hello from side\n"; }
+        ''', expected=['cout hello from side\n'], need_reverse=need_reverse)
+    except Exception as e:
+      if expect_pass:
+        raise
+      print('(seeing expected fail)')
+      passed = False
+      assertion = 'build the MAIN_MODULE with EMCC_FORCE_STDLIBS=1 in the environment'
+      if self.get_setting('ASSERTIONS'):
+        self.assertContained(assertion, str(e))
+      else:
+        self.assertNotContained(assertion, str(e))
+    assert passed == expect_pass, ['saw', passed, 'but expected', expect_pass]
 
   @needs_dlfcn
   @with_env_modify({'EMCC_FORCE_STDLIBS': 'libc++'})

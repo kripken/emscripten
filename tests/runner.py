@@ -137,9 +137,9 @@ def needs_dlfcn(func):
   assert callable(func)
 
   @wraps(func)
-  def decorated(self):
+  def decorated(self, *args, **kwargs):
     self.check_dlfcn()
-    return func(self)
+    return func(self, *args, **kwargs)
 
   return decorated
 
