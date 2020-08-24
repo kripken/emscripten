@@ -2769,12 +2769,14 @@ def do_binaryen(target, asm_target, options, memfile, wasm_binary_target,
 
   def run_closure_compiler(final):
     final = building.closure_compiler(final, pretty=not optimizer.minify_whitespace,
-                                      extra_closure_args=options.closure_args)
+                                             extra_closure_args=options.closure_args,
+                                             emit_symbol_map=options.emit_symbol_map)
     save_intermediate_with_wasm('closure', wasm_binary_target)
     return final
 
   if options.use_closure_compiler:
     final = run_closure_compiler(final)
+    closure_symbols_file = shared.replace_suffix(final, '.closure_symbol_map')
 
   symbols_file = shared.replace_or_append_suffix(target, '.symbols') if options.emit_symbol_map else None
 
@@ -2816,6 +2818,12 @@ def do_binaryen(target, asm_target, options, memfile, wasm_binary_target,
 
   if shared.Settings.WASM2C:
     wasm2c.do_wasm2c(wasm_binary_target)
+
+  # Merge Wasm .symbols file with Closure JS .symbols file
+  if options.use_closure_compiler and options.emit_symbol_map:
+    closure_symbols = open(closure_symbols_file, 'r').read()
+    open(symbols_file, 'a').write(closure_symbols)
+    shared.try_delete(closure_symbols_file)
 
   # replace placeholder strings with correct subresource locations
   if shared.Settings.SINGLE_FILE:
