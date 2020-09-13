@@ -91,6 +91,8 @@ var LibraryManager = {
       libraries.push('library_strings.js');
     } else {
       libraries.push('library_browser.js');
+      libraries.push('library_mainloop.js');
+      libraries.push('library_safetimers.js');
     }
 
     if (USE_PTHREADS) { // TODO: Currently WebGL proxying makes pthreads library depend on WebGL.

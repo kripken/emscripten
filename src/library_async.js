@@ -20,7 +20,7 @@ mergeInto(LibraryManager.library, {
   },
 
 #if ASYNCIFY
-  $Asyncify__deps: ['$Browser', '$runAndAbortIfError'],
+  $Asyncify__deps: ['$runAndAbortIfError'],
   $Asyncify: {
     State: {
       Normal: 0,
@@ -213,8 +213,8 @@ mergeInto(LibraryManager.library, {
 #endif
           Asyncify.state = Asyncify.State.Rewinding;
           runAndAbortIfError(function() { Module['_asyncify_start_rewind'](Asyncify.currData) });
-          if (Browser.mainLoop.func) {
-            Browser.mainLoop.resume();
+          if (typeof MainLoop !== 'undefined' && MainLoop.func) {
+            MainLoop.resume();
           }
           var start = Asyncify.getDataRewindFunc(Asyncify.currData);
 #if ASYNCIFY_DEBUG
@@ -251,8 +251,8 @@ mergeInto(LibraryManager.library, {
           err('ASYNCIFY: start unwind ' + Asyncify.currData);
 #endif
           runAndAbortIfError(function() { Module['_asyncify_start_unwind'](Asyncify.currData) });
-          if (Browser.mainLoop.func) {
-            Browser.mainLoop.pause();
+          if (typeof MainLoop !== 'undefined' && MainLoop.func) {
+            MainLoop.pause();
           }
         }
       } else if (Asyncify.state === Asyncify.State.Rewinding) {
@@ -287,9 +287,10 @@ mergeInto(LibraryManager.library, {
     },
   },
 
+  emscripten_sleep__deps: ['$SafeTimers'],
   emscripten_sleep: function(ms) {
     Asyncify.handleSleep(function(wakeUp) {
-      Browser.safeSetTimeout(wakeUp, ms);
+      SafeTimers.safeSetTimeout(wakeUp, ms);
     });
   },
 
@@ -316,6 +317,7 @@ mergeInto(LibraryManager.library, {
     });
   },
 
+  emscripten_wget_data__deps: ['$Browser'],
   emscripten_wget_data: function(url, pbuffer, pnum, perror) {
     Asyncify.handleSleep(function(wakeUp) {
       Browser.asyncLoad(UTF8ToString(url), function(byteArray) {
