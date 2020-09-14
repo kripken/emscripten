@@ -3773,16 +3773,307 @@ LibraryManager.library = {
   },
 
 #if USE_LEGACY_DYNCALLS || !WASM_BIGINT
-  $dynCallLegacy: function(sig, ptr, args) {
-#if ASSERTIONS
-    assert(('dynCall_' + sig) in Module, 'bad function pointer type - no table for sig \'' + sig + '\'');
-    if (args && args.length) {
-      // j (64-bit integer) must be passed in as two numbers [low 32, high 32].
-      assert(args.length === sig.substring(1).replace(/j/g, '--').length);
-    } else {
-      assert(sig.length == 1);
+  $jitDynCall: function(sig) {
+    /*
+    Creates a new dynCall function, that is a wasm function that is called
+    with a function pointer and arguments and does a call_indirect for us.
+    To do this we create a tiny wasm module with a single export.
+
+    This takes around 1ms, so it can be noticeable if a lot of dynCalls are
+    jitted.
+
+    Example output for signature "dif" (returns f64, has 2 params i32, f32):
+
+    00 61 73 6d
+    01 00 00 00
+    01 0e 02 60   type section, func
+    03 7f 7f 7d   i32 i32 f32
+    01 7c         f64
+    60            another func
+    02 7f 7d
+    01 7c
+    02 09         import section
+    01 01 61 01 61 01
+    70 00 00
+    03 02 01 00   function section
+    07 05         export section
+    01 01 61 00 00
+    0a 0d         code section
+    01 0b 00 20 01 20 02 20  00 11 01 00 0b
+
+    (module
+     (type $t (func (param $x i32) (param $y f32) (result f64)))
+     (import "a" "a" (table $t (0 anyref)))
+     (func "a" (param $ptr i32) (param $x i32) (param $y f32) (result f64)
+      (call_indirect (type $t)
+       (local.get $x)
+       (local.get $y)
+       (local.get $ptr)
+      )
+     )
+    )
+
+    With legalization, the module for e.g. "vj" could look like
+
+    (module
+     (type $legal (func (param $fptr i32) (param $low i32) (param $high i32)))
+     (type $call (func (param $x i64)))
+     (import "a" "a" (table $t (0 anyref)))
+     (func "a" (type $legal) (param $fptr i32) (param $low i32) (param $high i32)
+      (call_indirect (type $call)
+       (i64.or
+        (i64.extend_i32_u
+         (local.get $low)
+        )
+        (i64.shl
+         (i64.extend_i32_u
+          (local.get $high)
+         )
+         (i64.const 32)
+        )
+       )
+       (local.get $fptr)
+      )
+     )
+    )
+
+    or for "j",
+
+    (module
+     (type $imported (func (param i32)))
+     (type $legal (func (param $fptr i32) (result i32)))
+     (type $call (func (result i64)))
+     (import "a" "a" (table $t (0 anyref)))
+     (import "a" "b" (func $setTempRet0 (type $imported)))
+     (func "a" (type $legal) (param $fptr i32) (result i32)
+      (local $temp i64)
+      (call $setTempRet0
+       (i32.wrap_i64
+        (i64.shr_u
+         (local.tee $temp
+          (call_indirect (type $call)
+           (local.get $fptr)
+          )
+         )
+         (i64.const 32)
+        )
+       )
+      )
+      (i32.wrap_i64
+       (local.get $temp)
+      )
+     )
+    )
+    */
+
+    var sigRet = sig.slice(0, 1);
+    var sigParam = sig.slice(1);
+
+    // Prepare for legalization
+    var illegalReturn = false;
+    var illegalParams = 0;
+#if !WASM_BIGINT
+    illegalReturn = sigRet === 'j';
+    for (var i = 0; i < sigParam.length; i++) {
+      if (sigParam[i] === 'j') {
+        illegalParams++;
+      }
     }
 #endif
+
+    // Create a tiny wasm module with an exported function to call the table
+    // for us.
+    var typeSection = [
+      0x01, // section id
+      -1,   // length (placeholder)
+      -1,   // number of types (placeholder)
+    ];
+
+    var numTypes = 0;
+
+    function addType(sig, legalize) {
+      numTypes++;
+
+      var sigRet = sig.slice(0, 1);
+      var sigParam = sig.slice(1);
+
+      typeSection.push(0x60); // func
+      typeSection.push(sigParam.length + (legalize ? illegalParams : 0));
+      for (var i = 0; i < sigParam.length; ++i) {
+#if !WASM_BIGINT
+        if (sigParam[i] === 'j' && legalize) {
+          typeSection.push(wasmTypeCodes['i']);
+          typeSection.push(wasmTypeCodes['i']);
+          continue;
+        }
+#endif
+        typeSection.push(wasmTypeCodes[sigParam[i]]);
+      }
+      if (sigRet == 'v') {
+        typeSection.push(0x00);
+      } else {
+        typeSection.push(0x01);
+#if !WASM_BIGINT
+        if (illegalReturn && legalize) {
+          typeSection.push(wasmTypeCodes['i']);
+        } else
+#endif
+        {
+          typeSection.push(wasmTypeCodes[sigRet]);
+        }
+      }
+    }
+
+    // First type: fptr, params (for the exported dyncall itself)
+    addType(
+      sigRet + 'i' + sigParam,
+      {{{ !WASM_BIGINT }}} // optionally legalize for JS
+    );
+    // Second type: no fptr, just params (for the indirect call inside)
+    addType(sig);
+#if !WASM_BIGINT
+    if (illegalReturn) {
+      // Third type for setTempRet0.
+      addType('vi');
+    }
+#endif
+
+    // Write the overall length of the type section back into the section header
+    // (excepting the 2 bytes for the section id and length)
+    typeSection[1] = typeSection.length - 2;
+    typeSection[2] = numTypes;
+
+    // Import section:
+    // (import "a" "a" (table $t (0 anyref)))
+    var importSection = [
+      0x02, // section id
+      -1,   // placeholder for size
+      -1    // placeholder for number
+    ];
+    var numImports = 1;
+#if !WASM_BIGINT
+    if (illegalReturn) {
+      // Also import setTempRet0 for the high bits.
+      numImports++;
+      importSection.push(0x01, 0x61, 0x01, 0x62, 0x00, 0x02);
+    }
+    // Table import
+    importSection.push(0x01, 0x61, 0x01, 0x61, 0x01, 0x70, 0x00, 0x00);
+#endif
+    importSection[1] = importSection.length - 2;
+    importSection[2] = numImports;
+
+    // Function section: declare one function with the first type
+    var functionSection = [0x03, 0x02, 0x01, 0x00];
+
+    // Export section: Export the function as "a"
+    var exportSection = [0x07, 0x05, 0x01, 0x01, 0x61, 0x00, 0x00];
+#if !WASM_BIGINT
+    if (illegalReturn) {
+      // If we also imported setTempRet0, the export index is of function 1.
+      exportSection[exportSection.length - 1] = 0x01;
+    }
+#endif
+
+    // Code section: read the params and do the indirect call.
+    var codeSection = [
+      0x0a, // section id
+      -1,   // section length (placeholder)
+      0x01, // num functions
+      -1    // function length (placeholder)
+    ];
+#if !WASM_BIGINT
+    if (illegalReturn) {
+      // Add an i64 var to use when splitting up the i64 return value
+      codeSection.push(0x01, 0x01, wasmTypeCodes['j']);
+      // The temp index is after the fptr, the params, and the extra legalized
+      // ones.
+      var tempIndex = sigParam.length + illegalParams + 1;
+    } else
+#endif
+    {
+      codeSection.push(0x00); // no vars
+    }
+
+    // i64 params are legalized as pairs of i32, i32. "i" tracks the index
+    // in the true signature, "j" tracks the index of the legalized one. Note
+    // that j starts at 1 because 0 is the function pointer.
+    for (var i = 0, j = 1; i < sigParam.length; ++i) {
+#if !WASM_BIGINT
+      if (sigParam[i] === 'j') {
+        // Receive two i32s and compose an i64
+        codeSection.push(
+          0x20, // local.get
+          j++,  // index of low 32 bits
+          0xAD, // i64.extend_i32_u
+          0x20, // local.get
+          j++,  // index of high 32 bits
+          0xAD, // i64.extend_i32_u
+          0x42, // i64.const 32
+          0x20,
+          0x86, // i64.shl
+          0x84 // i64.or
+        )
+        continue;
+      }
+#endif
+      codeSection.push(0x20); // local.get
+      codeSection.push(j++);    // index
+    }
+    codeSection.push(0x20); // local.get
+    codeSection.push(0); // function pointer
+    codeSection.push(0x11); // call_indirect
+    codeSection.push(0x01); // second function type
+    codeSection.push(0x00); // table index 0
+#if !WASM_BIGINT
+    if (illegalReturn) {
+      // Split the i64 into parts, return the high bits in tempRet0, and the
+      // low bits directly.
+      codeSection.push(
+        0x22, tempIndex, // tee the result of the call
+        0x42, 0x20,      // i64.const 32
+        0x88,            // i64.shr_u
+        0xA7,            // wrap
+        0x10, 0x00,      // call the import setTempRet0
+        0x20, tempIndex, // get the result of the call again
+        0xA7            // wrap
+      );
+    }
+#endif
+    codeSection.push(0x0b); // end function
+    codeSection[1] = codeSection.length - 2;
+    codeSection[3] = codeSection.length - 4;
+
+    var bytes = new Uint8Array([
+      0x00, 0x61, 0x73, 0x6d, // magic ("\0asm")
+      0x01, 0x00, 0x00, 0x00, // version: 1
+    ].concat(typeSection, importSection, functionSection, exportSection, codeSection));
+
+    // We can compile this wasm module synchronously because it is very small.
+    //console.log(sig, illegalReturn, illegalParams, bytes);
+    var module = new WebAssembly.Module(bytes);
+    var instance = new WebAssembly.Instance(module, {
+      'a': {
+        'a': wasmTable
+#if !WASM_BIGINT
+        , 'b': setTempRet0
+#endif
+      }
+    });
+    return instance.exports['a'];
+  },
+
+  $dynCallLegacy__deps: ['$jitDynCall'],
+  $dynCallLegacy: function(sig, ptr, args) {
+#if WASM2JS
+    var ret = wasmTable.get(ptr).apply(null, args);
+console.log('wasm2js!', sig, ptr, args, ' => ', ret, new Error().stack);
+setTempRet0(-1);
+    return ret;
+#endif
+    if (!Module['dynCall_' + sig]) {
+      Module['dynCall_' + sig] = jitDynCall(sig);
+    }
     if (args && args.length) {
       return Module['dynCall_' + sig].apply(null, [ptr].concat(args));
     }
@@ -3815,7 +4106,7 @@ LibraryManager.library = {
 #else
 #if !WASM_BIGINT
     // Without WASM_BIGINT support we cannot directly call function with i64 as
-    // part of thier signature, so we rely the dynCall functions generated by
+    // part of their signature, so we rely on the dynCall functions generated by
     // wasm-emscripten-finalize
     if (sig.indexOf('j') != -1) {
       return dynCallLegacy(sig, ptr, args);
