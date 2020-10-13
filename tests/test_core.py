@@ -5068,6 +5068,7 @@ main( int argv, char ** argc ) {
       self.do_runf(path_from_root('tests', 'utf8_invalid.cpp'), 'OK.')
 
   # Test that invalid character in UTF8 does not cause decoding to crash.
+  @no_asan('MINIMAL_RUNTIME does not support ASan')
   def test_minimal_runtime_utf8_invalid(self):
     self.set_setting('EXTRA_EXPORTED_RUNTIME_METHODS', ['UTF8ToString', 'stringToUTF8'])
     for decoder_mode in [[], ['-s', 'TEXTDECODER=1']]:
@@ -5620,6 +5621,7 @@ int main(void) {
   def test_whets(self):
     self.do_runf(path_from_root('tests', 'whets.cpp'), 'Single Precision C Whetstone Benchmark')
 
+  @no_asan("ASan changes allocator behavior")
   def test_dlmalloc_inline(self):
     self.banned_js_engines = [NODE_JS] # slower, and fail on 64-bit
     # needed with typed arrays
@@ -5629,6 +5631,7 @@ int main(void) {
     self.do_run(src, '*1,0*', args=['200', '1'], force_c=True)
     self.do_run('src.js', '*400,0*', args=['400', '400'], force_c=True, no_build=True)
 
+  @no_asan("ASan changes allocator behavior")
   def test_dlmalloc(self):
     self.banned_js_engines = [NODE_JS] # slower, and fail on 64-bit
     # needed with typed arrays
@@ -6049,9 +6052,6 @@ return malloc(size);
   @needs_make('make')
   @is_slow_test
   def test_openjpeg(self):
-    if '-fsanitize=address' in self.emcc_args:
-      self.set_setting('INITIAL_MEMORY', 128 * 1024 * 1024)
-
     def line_splitter(data):
       out = ''
       counter = 0
@@ -6935,6 +6935,8 @@ someweirdtext
     'minimal_runtime': (['-s', 'MINIMAL_RUNTIME'],),
   })
   def test_source_map(self, args):
+    if 'MINIMAL_RUNTIME' in args and '-fsanitize=address' in self.emcc_args:
+      self.skipTest('MINIMAL_RUNTIME does not support ASan')
     if '-g' not in self.emcc_args:
       self.emcc_args.append('-g')
 
@@ -7765,6 +7767,7 @@ NODEFS is no longer included by default; build with -lnodefs.js
       print(occurances)
 
   # Tests that building with -s DECLARE_ASM_MODULE_EXPORTS=0 works
+  @no_asan('MINIMAL_RUNTIME does not support ASan')
   def test_minimal_runtime_no_declare_asm_module_exports(self):
     self.set_setting('DECLARE_ASM_MODULE_EXPORTS', 0)
     self.set_setting('WASM_ASYNC_COMPILATION', 0)
@@ -7804,6 +7807,7 @@ NODEFS is no longer included by default; build with -lnodefs.js
     self.do_runf(path_from_root('tests', 'small_hello_world.c'), 'hello')
 
   # Tests global initializer with -s MINIMAL_RUNTIME=1
+  @no_asan('MINIMAL_RUNTIME does not support ASan')
   def test_minimal_runtime_global_initializer(self):
     self.set_setting('MINIMAL_RUNTIME', 1)
     self.maybe_closure()
@@ -8161,6 +8165,7 @@ NODEFS is no longer included by default; build with -lnodefs.js
     self.do_run_in_out_file_test('tests', 'core', 'test_get_exported_function.cpp')
 
   # Tests the emscripten_get_exported_function() API.
+  @no_asan('MINIMAL_RUNTIME does not support ASan')
   def test_minimal_runtime_emscripten_get_exported_function(self):
     # Could also test with -s ALLOW_TABLE_GROWTH=1
     self.set_setting('RESERVED_FUNCTION_POINTERS', 2)
