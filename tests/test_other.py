@@ -6530,13 +6530,13 @@ int main() {
                                  filename, filename + '.new')
 
   def run_metadce_test(self, filename, args, expected_exists, expected_not_exists, expected_size,
-                       check_sent=True, check_imports=True, check_exports=True, check_funcs=True):
+                       check_funcs=True):
     size_slack = 0.05
 
     # in -Os, -Oz, we remove imports wasm doesn't need
     print('Running metadce test: %s:' % filename, args, expected_exists,
-          expected_not_exists, expected_size, check_sent, check_imports, check_exports, check_funcs)
-    filename = path_from_root('tests', 'other', 'metadce', filename)
+          expected_not_exists, expected_size, check_funcs)
+    full_filename = path_from_root('tests', 'other', 'metadce', filename)
 
     def clean_arg(arg):
       return arg.replace('-', '')
@@ -6555,12 +6555,16 @@ int main() {
 
       return result
 
-    expected_basename = os.path.splitext(filename)[0]
+    expected_basename = shared.unsuffixed(full_filename)
     expected_basename += args_to_filename(args)
 
-    self.run_process([EMCC, filename, '-g2'] + args)
+    self.emcc_args += args
+    self.emcc_args += ['-g2']
+    self.build(full_filename)
+    output = shared.unsuffixed(filename) + '.js'
+    wasm_output = shared.unsuffixed(filename) + '.wasm'
     # find the imports we send from JS
-    js = open('a.out.js').read()
+    js = open(output).read()
     start = js.find('asmLibraryArg = ')
     end = js.find('}', start) + 1
     start = js.find('{', start)
@@ -6577,12 +6581,12 @@ int main() {
 
     if expected_size is not None:
       # measure the wasm size without the name section
-      self.run_process([wasm_opt, 'a.out.wasm', '--strip-debug', '-o', 'a.out.nodebug.wasm'])
-      wasm_size = os.path.getsize('a.out.nodebug.wasm')
+      self.run_process([wasm_opt, wasm_output, '--strip-debug', '-o', 'nodebug.wasm'])
+      wasm_size = os.path.getsize('nodebug.wasm')
       ratio = abs(wasm_size - expected_size) / float(expected_size)
       print('  seen wasm size: %d (expected: %d), ratio to expected: %f' % (wasm_size, expected_size, ratio))
     self.assertLess(ratio, size_slack)
-    imports, exports, funcs = parse_wasm('a.out.wasm')
+    imports, exports, funcs = parse_wasm(wasm_output)
     imports.sort()
     exports.sort()
     funcs.sort()
@@ -6600,20 +6604,17 @@ int main() {
 
     funcs = [strip_numeric_suffixes(f) for f in funcs]
 
-    if check_sent:
-      sent_file = expected_basename + '.sent'
-      sent_data = '\n'.join(sent) + '\n'
-      self.assertFileContents(sent_file, sent_data)
+    sent_file = expected_basename + '.sent'
+    sent_data = '\n'.join(sent) + '\n'
+    self.assertFileContents(sent_file, sent_data)
 
-    if check_imports:
-      filename = expected_basename + '.imports'
-      data = '\n'.join(imports) + '\n'
-      self.assertFileContents(filename, data)
+    filename = expected_basename + '.imports'
+    data = '\n'.join(imports) + '\n'
+    self.assertFileContents(filename, data)
 
-    if check_exports:
-      filename = expected_basename + '.exports'
-      data = '\n'.join(exports) + '\n'
-      self.assertFileContents(filename, data)
+    filename = expected_basename + '.exports'
+    data = '\n'.join(exports) + '\n'
+    self.assertFileContents(filename, data)
 
     if check_funcs:
       filename = expected_basename + '.funcs'
@@ -6658,12 +6659,11 @@ int main() {
     'export_nothing':
           (['-Os', '-s', 'EXPORTED_FUNCTIONS=[]'],    [], [],     43), # noqa
     # we don't metadce with linkable code! other modules may want stuff
-    # TODO(sbc): Investivate why the number of exports is order of magnitude
-    # larger for wasm backend.
+    'main_module': (['-O3', '-s', 'MAIN_MODULE=1'], [], [],  520881), # noqa
     'main_module_2': (['-O3', '-s', 'MAIN_MODULE=2'], [], [],  10309), # noqa
   })
   def test_metadce_hello(self, *args):
-    self.run_metadce_test('hello_world.cpp', *args)
+    self.run_metadce_test('hello_world.c', *args)
 
   @parameterized({
     'O3':                 ('mem.c', ['-O3'],
