@@ -982,9 +982,41 @@ function makeDynCall(sig, funcPtr) {
   assert(sig.indexOf('j') == -1);
   if (USE_LEGACY_DYNCALLS) {
     return `getDynCaller("${sig}", ${funcPtr})`;
-  } else {
+  }
+  if (!ASYNCIFY) {
     return `wasmTable.get(${funcPtr})`;
   }
+  // Asyncify needs to know how to call back into the wasm the way it was
+  // called, so that we can resume execution (resuming begins with calling
+  // back inside just as we were called before). Exports are handled by
+  // Asyncify.exportCallStack, which lets us track the export by which we
+  // entered the wasm, but calling the table requires some help. Track which
+  // function pointer and which parameters were used on that stack with
+  // special entries.
+  var debugPush = '', debugPop = '';
+  if (ASYNCIFY_DEBUG >= 2) {
+    debugPush = `err('ASYNCIFY: ' + '  '.repeat(Asyncify.exportCallStack.length) + ' try ' + entry);`;
+    debugPop = `err('ASYNCIFY: ' + '  '.repeat(Asyncify.exportCallStack.length) + ' finally ' + entry);`;
+  }
+  return `
+(function() {
+  var args = Array.prototype.slice.call(arguments);
+  // Encode the information for a dynamic call: the function pointer, and the arguments,
+  // with room for the ID that will be filled in later.
+  var entry = { funcPtr: ${funcPtr}, args: args, id: -1 };
+  try {
+    ${debugPush}
+    Asyncify.exportCallStack.push(entry);
+    return wasmTable.get(${funcPtr}).apply(null, args);
+  } finally {
+    if (ABORT) return;
+    var popped = Asyncify.exportCallStack.pop();
+    ${debugPop}
+    assert(popped === entry);
+    Asyncify.maybeStopUnwind();
+  }
+})
+`;
 }
 
 function heapAndOffset(heap, ptr) { // given   HEAP8, ptr   , we return    splitChunk, relptr

@@ -1327,12 +1327,6 @@ There is NO warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR P
     if shared.Settings.MEMORYPROFILER:
       shared.Settings.EXPORTED_FUNCTIONS += ['___heap_base']
 
-    if shared.Settings.ASYNCIFY:
-      # See: https://github.com/emscripten-core/emscripten/issues/12065
-      # See: https://github.com/emscripten-core/emscripten/issues/12066
-      shared.Settings.USE_LEGACY_DYNCALLS = 1
-      shared.Settings.DEFAULT_LIBRARY_FUNCS_TO_INCLUDE += ['$getDynCaller']
-
     # Reconfigure the cache now that settings have been applied. Some settings
     # such as LTO and SIDE_MODULE/MAIN_MODULE effect which cache directory we use.
     shared.reconfigure_cache()
