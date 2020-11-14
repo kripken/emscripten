@@ -484,7 +484,7 @@ def lld_flags_for_executable(external_symbol_list):
   if not Settings.STANDALONE_WASM:
     cmd.append('--import-memory')
 
-  if Settings.USE_PTHREADS:
+  if Settings.USE_PTHREADS or Settings.USE_WASM_WORKERS:
     cmd.append('--shared-memory')
 
   if Settings.MEMORY64:
@@ -1546,7 +1546,7 @@ def emit_wasm_source_map(wasm_file, map_file, final_wasm):
 def get_binaryen_feature_flags():
   # start with the MVP features, add the rest as needed
   ret = ['--mvp-features']
-  if Settings.USE_PTHREADS:
+  if Settings.USE_PTHREADS or Settings.USE_WASM_WORKERS:
     ret += ['--enable-threads']
   if Settings.MEMORY64:
     ret += ['--enable-memory64']

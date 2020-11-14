@@ -518,27 +518,32 @@ class Library(object):
 class MTLibrary(Library):
   def __init__(self, **kwargs):
     self.is_mt = kwargs.pop('is_mt')
+    self.is_ww = kwargs.pop('is_ww')
     super(MTLibrary, self).__init__(**kwargs)
 
   def get_cflags(self):
     cflags = super(MTLibrary, self).get_cflags()
     if self.is_mt:
       cflags += ['-s', 'USE_PTHREADS=1', '-DUSE_THREADS']
+    if self.is_ww:
+      cflags += ['-s', 'USE_WASM_WORKERS=1']
     return cflags
 
   def get_base_name(self):
     name = super(MTLibrary, self).get_base_name()
     if self.is_mt:
       name += '-mt'
+    if self.is_ww:
+      name += '-ww'
     return name
 
   @classmethod
   def vary_on(cls):
-    return super(MTLibrary, cls).vary_on() + ['is_mt']
+    return super(MTLibrary, cls).vary_on() + ['is_mt', 'is_ww']
 
   @classmethod
   def get_default_variation(cls, **kwargs):
-    return super(MTLibrary, cls).get_default_variation(is_mt=shared.Settings.USE_PTHREADS, **kwargs)
+    return super(MTLibrary, cls).get_default_variation(is_mt=shared.Settings.USE_PTHREADS, is_ww=shared.Settings.USE_WASM_WORKERS, **kwargs)
 
 
 class exceptions(object):
@@ -1197,6 +1202,8 @@ class libpthread(AsanInstrumentedLibrary, MuslInternalLibrary, MTLibrary):
       files += [shared.path_from_root('system', 'lib', 'pthread', 'library_pthread.c')]
       files += [shared.path_from_root('system', 'lib', 'pthread', 'library_pthread_wasm.c')]
       return files
+    elif self.is_ww:
+      return [shared.path_from_root('system', 'lib', 'pthread', 'library_pthread_wasm.c')]
     else:
       return [shared.path_from_root('system', 'lib', 'pthread', 'library_pthread_stub.c')]
 

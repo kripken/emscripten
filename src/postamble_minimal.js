@@ -76,6 +76,13 @@ function initRuntime(asm) {
   _emscripten_register_main_browser_thread_id(PThread.mainThreadBlock);
 #endif
 
+#if USE_WASM_WORKERS
+  if (ENVIRONMENT_IS_WASM_WORKER) {
+    __wasm_worker_initializeRuntime();
+    return;
+  }
+#endif
+
 #if STACK_OVERFLOW_CHECK
   _emscripten_stack_init();
   writeStackCookie();

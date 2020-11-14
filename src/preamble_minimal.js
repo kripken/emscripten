@@ -65,12 +65,16 @@ var wasmMaximumMemory = {{{ MAXIMUM_MEMORY >>> 16 }}};
 var wasmMaximumMemory = {{{ INITIAL_MEMORY >>> 16}}};
 #endif
 
-var wasmMemory = new WebAssembly.Memory({
+var wasmMemory =
+#if USE_WASM_WORKERS
+  Module['memory'] ||
+#endif
+  new WebAssembly.Memory({
   'initial': {{{ INITIAL_MEMORY >>> 16 }}}
 #if USE_PTHREADS || !ALLOW_MEMORY_GROWTH || MAXIMUM_MEMORY != -1
   , 'maximum': wasmMaximumMemory
 #endif
-#if USE_PTHREADS
+#if USE_PTHREADS || USE_WASM_WORKERS
   , 'shared': true
 #endif
   });
