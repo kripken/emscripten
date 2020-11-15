@@ -67,7 +67,7 @@ var wasmMaximumMemory = {{{ INITIAL_MEMORY >>> 16}}};
 
 var wasmMemory =
 #if USE_WASM_WORKERS
-  Module['memory'] ||
+  Module['mem'] ||
 #endif
   new WebAssembly.Memory({
   'initial': {{{ INITIAL_MEMORY >>> 16 }}}

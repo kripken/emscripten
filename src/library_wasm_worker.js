@@ -1,6 +1,5 @@
 mergeInto(LibraryManager.library, {
 	wasm_workers: {},
-	wasm_workers__postset: 'if (ENVIRONMENT_IS_WASM_WORKER) _wasm_workers[0] = this;',
 	wasm_workers_id: 1,
 
 	_wasm_worker_delayedMessageQueue: [],
@@ -10,14 +9,14 @@ mergeInto(LibraryManager.library, {
 	},
 
 	_wasm_worker_runPostMessage: function(e) {
-		var d = e.data;
-		if (d['_wsc'] /* "WaSm Call" */) {
-			var f = wasmTable.get(d['_wsc']);
-			if (d['a'] === 0) f();
-			else if (d['a'] === 1) f(d['x']);
-			else if (d['a'] === 2) f(d['x'], d['y']);
-			else if (d['a'] === 3) f(d['x'], d['y'], d['z']);
-			else dynCall(d['sig'], f, d['x']);
+		var data = e.data, wasmCall = data['_wsc'];
+		if (wasmCall) {
+			var func = wasmTable.get(wasmCall);
+			if (data['a'] === 0) func();
+			else if (data['a'] === 1) func(data['x']);
+			else if (data['a'] === 2) func(data['x'], data['y']);
+			else if (data['a'] === 3) func(data['x'], data['y'], data['z']);
+			else dynCall(data['s'], func, data['x']);
 		}
 	},
 
@@ -30,12 +29,13 @@ mergeInto(LibraryManager.library, {
 	// src/postamble_minimal.js brings this in to the build, and calls this function.
 	_wasm_worker_initializeRuntime__deps: ['_wasm_worker_flushDelayedMessages'],
 	_wasm_worker_initializeRuntime: function() {
-		var stackTop = Module["stackBase"] + Module["stackSize"];
+		var stackTop = Module["sb"] + Module["sz"];
 #if ASSERTIONS
 		assert(stackTop % 16 == 0);
-		assert(Module["stackBase"] % 16 == 0);
+		assert(Module["sb"] % 16 == 0);
 #endif
-		_emscripten_stack_set_limits(stackTop, Module["stackBase"]);
+		// TODO: Fuse these to the same function "emscripten_establish_stack".
+		_emscripten_stack_set_limits(stackTop, Module["sb"]);
 		stackRestore(stackTop);
 #if STACK_OVERFLOW_CHECK >= 2
 	    ___set_stack_limits(_emscripten_stack_get_base(), _emscripten_stack_get_end());
@@ -46,19 +46,36 @@ mergeInto(LibraryManager.library, {
 	    addEventListener('message', __wasm_worker_runPostMessage);
 	},
 
-	emscripten_create_wasm_worker__deps: ['wasm_workers', 'wasm_workers_id', '_wasm_worker_appendToQueue', '_wasm_worker_runPostMessage', '_wasm_worker_flushDelayedMessages'],
-	emscripten_create_wasm_worker__postset: 'if (ENVIRONMENT_IS_WASM_WORKER) addEventListener("message", __wasm_worker_appendToQueue);',
+#if MODULARIZE
+	_wasmWorkerBlobUrl: "URL.createObjectURL(new Blob(['onmessage=function(d){onmessage=null;d=d.data;importScripts(d.js);{{{ EXPORT_NAME }}}(d);d.wasm=d.mem=d.js=0;}'], {type: 'application/javascript'}))",
+#else
+	_wasmWorkerBlobUrl: "URL.createObjectURL(new Blob(['onmessage=function(d){onmessage=null;d=d.data;self.Module=d;importScripts(d.js);d.wasm=d.mem=d.js=0;}'], {type: 'application/javascript'}))",
+#endif
+
+	emscripten_create_wasm_worker__deps: ['wasm_workers', 'wasm_workers_id', '_wasm_worker_appendToQueue', '_wasm_worker_runPostMessage', '_wasm_worker_flushDelayedMessages'
+#if USE_WASM_WORKERS == 2
+		, '_wasmWorkerBlobUrl'
+#endif
+	],
+	emscripten_create_wasm_worker__postset: 'if (ENVIRONMENT_IS_WASM_WORKER) {\n'
+		+ '_wasm_workers[0] = this;\n'
+		+ 'addEventListener("message", __wasm_worker_appendToQueue);\n'
+		+ '}\n',
 	emscripten_create_wasm_worker: function(stackLowestAddress, stackSize) {
+#if USE_WASM_WORKERS == 2
+		var worker = new Worker(__wasmWorkerBlobUrl);
+#else
 		var worker = new Worker(Module['wasmWorker']);
+#endif
 		// Craft the Module object for the Wasm Worker scope:
 		var stackBase = (stackLowestAddress + 15) & -16;
 		worker.postMessage({
 			'$ww': 1, // Signal that this Worker will be in a Wasm Worker scope, and not the main browser thread scope.
 			'wasm': Module['wasm'],
 			'js': Module['js'],
-			'memory': wasmMemory,
-			'stackBase': stackBase,
-			'stackSize': (stackLowestAddress + stackSize - stackBase) & -16,
+			'mem': wasmMemory,
+			'sb': stackBase,
+			'sz': (stackLowestAddress + stackSize - stackBase) & -16,
 		});
 		worker.addEventListener('message', __wasm_worker_runPostMessage);
 		_wasm_workers[_wasm_workers_id] = worker;
@@ -114,7 +131,7 @@ mergeInto(LibraryManager.library, {
 		worker.postMessage({
 			'_wsc': funcPtr, // "WaSm Call"
 			'a': -1,
-			'sig': 'v', /*todo craft varargs string*/
+			's': 'v', /*todo craft varargs string*/
 			'x': [/*todo extract varargs*/]
 		});
 	},
@@ -205,6 +222,9 @@ mergeInto(LibraryManager.library, {
 		tryAcquireLock();
 	},
 
+	// The dependency emscripten_semaphore_async_acquire -> emscripten_atomics_async_wait is artificial
+	// so that we get the waitAsync polyfill emitted if code calls emscripten_semaphore_async_acquire() but
+	// not emscripten_atomics_async_wait().
 	emscripten_semaphore_async_acquire__deps: ['emscripten_atomics_async_wait'],
 	emscripten_semaphore_async_acquire: function(sem, num, asyncWaitFinished, userData, maxWaitMilliseconds) {
 		function dispatch(idx, ret) {

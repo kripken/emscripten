@@ -1200,10 +1200,11 @@ class libpthread(AsanInstrumentedLibrary, MuslInternalLibrary, MTLibrary):
           'pthread_setspecific.c', 'pthread_setcancelstate.c'
         ])
       files += [shared.path_from_root('system', 'lib', 'pthread', 'library_pthread.c')]
-      files += [shared.path_from_root('system', 'lib', 'pthread', 'library_pthread_wasm.c')]
+      files += [shared.path_from_root('system', 'lib', 'pthread', 'library_pthread_tls.c')]
+      files += [shared.path_from_root('system', 'lib', 'pthread', 'library_pthread_atomics.c')]
       return files
     elif self.is_ww:
-      return [shared.path_from_root('system', 'lib', 'pthread', 'library_pthread_wasm.c')]
+      return [shared.path_from_root('system', 'lib', 'pthread', 'library_pthread_atomics.c')]
     else:
       return [shared.path_from_root('system', 'lib', 'pthread', 'library_pthread_stub.c')]
 

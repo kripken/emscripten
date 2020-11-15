@@ -61,11 +61,14 @@ def generate_minimal_runtime_load_statement(target_basename):
   # Download wasm_worker file
   if shared.Settings.USE_WASM_WORKERS:
     if shared.Settings.MODULARIZE:
-      modularize_imports += ['wasmWorker: URL.createObjectURL(new Blob([r[%d]], {type: "application/javascript"}))' % len(files_to_load)]
+      if shared.Settings.USE_WASM_WORKERS == 1:
+        modularize_imports += ['wasmWorker: URL.createObjectURL(new Blob([r[%d]], {type: "application/javascript"}))' % len(files_to_load)]
       modularize_imports += ['js: js']
     else:
-      then_statements += ['%s.wasmWorker = URL.createObjectURL(new Blob([r[%d]], {type: "application/javascript"}));' % (shared.Settings.EXPORT_NAME, len(files_to_load))]
-    if download_wasm:
+      if shared.Settings.USE_WASM_WORKERS == 1:
+        then_statements += ['%s.wasmWorker = URL.createObjectURL(new Blob([r[%d]], {type: "application/javascript"}));' % (shared.Settings.EXPORT_NAME, len(files_to_load))]
+
+    if download_wasm and shared.Settings.USE_WASM_WORKERS == 1:
       files_to_load += ["binary('%s')" % (target_basename + '.ww.js')]
 
   if shared.Settings.MODULARIZE and shared.Settings.USE_PTHREADS:

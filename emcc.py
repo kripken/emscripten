@@ -1597,7 +1597,8 @@ There is NO warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR P
       shared.Settings.EXPORTED_FUNCTIONS += ['_emscripten_stack_set_limits']
       shared.Settings.DEFAULT_LIBRARY_FUNCS_TO_INCLUDE += ['_wasm_worker_initializeRuntime']
       # set location of Wasm Worker bootstrap .js
-      shared.Settings.WASM_WORKER_FILE = unsuffixed(os.path.basename(target)) + '.ww.js'
+      if shared.Settings.USE_WASM_WORKERS == 1:
+        shared.Settings.WASM_WORKER_FILE = unsuffixed(os.path.basename(target)) + '.ww.js'
       shared.Settings.SYSTEM_JS_LIBRARIES.append((0, shared.path_from_root('src', 'library_wasm_worker.js')))
 
     if shared.Settings.FORCE_FILESYSTEM and not shared.Settings.MINIMAL_RUNTIME:
@@ -2322,10 +2323,12 @@ def post_link(options, in_wasm, wasm_target, target):
         minified_worker = building.acorn_optimizer(worker_output, ['minifyWhitespace'], return_output=True)
         open(worker_output, 'w').write(minified_worker)
 
-    if shared.Settings.USE_WASM_WORKERS:
+    if shared.Settings.USE_WASM_WORKERS == 1:
       worker_output = os.path.join(target_dir, shared.Settings.WASM_WORKER_FILE)
       with open(worker_output, 'w') as f:
         f.write(shared.read_and_preprocess(shared.path_from_root('src', 'wasm_worker.js'), expand_macros=True))
+#        shared.Settings.WASM_WORKER_SCRIPT_AS_EMBEDDED_JS_STRING = shared.read_and_preprocess(shared.path_from_root('src', 'wasm_worker.js'), expand_macros=True)
+#        f.write(shared.Settings.WASM_WORKER_SCRIPT_AS_EMBEDDED_JS_STRING)
 
       # Minify the wasm_worker.js file in optimized builds
       if (shared.Settings.OPT_LEVEL >= 1 or shared.Settings.SHRINK_LEVEL >= 1) and not shared.Settings.DEBUG_LEVEL:
