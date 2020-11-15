@@ -1,7 +1,7 @@
 #pragma once
 
 #ifdef __EMSCRIPTEN_PTHREADS__
-#error Emscripten Wasm Workers API is not available when building with -pthread (-s USE_PTHREADS=1). Compile instead with -s WASM_WORKERS=1!
+#error Emscripten Wasm Workers API is not available when building with -pthread (-s USE_PTHREADS=1). Compile instead with -s USE_WASM_WORKERS=1!
 #endif
 
 #ifdef __cplusplus
@@ -91,7 +91,7 @@ void emscripten_lock_waitinf_acquire(emscripten_lock_t *lock) // only in worker
 	{
 		val = emscripten_atomic_cas_u32((void*)lock, 0, 1);
 		if (val)
-			emscripten_atomics_wait((void*)lock, val, __builtin_inf());
+			emscripten_atomics_wait((void*)lock, val, EMSCRIPTEN_WAIT_INFINITY);
 	} while(val);
 }
 
@@ -115,14 +115,7 @@ void emscripten_lock_release(emscripten_lock_t *lock)
 
 #define emscripten_semaphore_t volatile uint32_t
 
-// Use with syntax emscripten_semaphore_t s = EMSCRIPTEN_SEMAPHORE_T_STATIC_INITIALIZER(num); where
-// num is a compile time constant.
-/*
-#define EMSCRIPTEN_SEMAPHORE_T_STATIC_INITIALIZER(num) __extension__ ({       \
-        _Static_assert(__builtin_constant_p((num)), "Expected constant in static initialization of emscripten_semaphore_t"); \
-        ((int)(num)); \
-    })
-*/
+// Use with syntax emscripten_semaphore_t s = EMSCRIPTEN_SEMAPHORE_T_STATIC_INITIALIZER(num);
 #define EMSCRIPTEN_SEMAPHORE_T_STATIC_INITIALIZER(num) ((int)(num))
 
 void emscripten_semaphore_init(emscripten_semaphore_t *sem, int num)
@@ -178,7 +171,7 @@ int emscripten_semaphore_waitinf_acquire(emscripten_semaphore_t *sem, int num)
 	{
 		while(val < num)
 		{
-			emscripten_atomics_wait(sem, val, __builtin_inf());
+			emscripten_atomics_wait(sem, val, EMSCRIPTEN_WAIT_INFINITY);
 			val = emscripten_atomic_load_u32((void*)sem);
 		}
 		int ret = (int)emscripten_atomic_cas_u32((void*)sem, val, val - num);
@@ -198,22 +191,9 @@ int emscripten_semaphore_waitinf_acquire(emscripten_semaphore_t *sem, int num)
 // [main thread or worker]
 uint32_t emscripten_semaphore_release(emscripten_semaphore_t *sem, int num)
 {
-//	uint32_t was = emscripten_atomic_load_u32((void*)sem);
-
 	uint32_t ret = emscripten_atomic_add_u32((void*)sem, num);
-	/*
-	for(;;)
-	{
-		uint32_t ret = emscripten_atomic_cas_u32((void*)sem, was, was + num);
-		if (ret == was) { was = ret; break; }
-		was = ret;
-	}
-*/
 	emscripten_atomics_notify((void*)sem, num);
 	return ret;
-	/*
-	uint32_t is = emscripten_atomic_load_u32((void*)sem);
-	EM_ASM(console.log('Released ' + $0 + 'semaphores. Was ' + $1 + ', is ' + $2), num, was, is);*/
 }
 
 #ifdef __cplusplus
