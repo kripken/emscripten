@@ -16,7 +16,7 @@ mergeInto(LibraryManager.library, {
 			else if (data['a'] === 1) func(data['x']);
 			else if (data['a'] === 2) func(data['x'], data['y']);
 			else if (data['a'] === 3) func(data['x'], data['y'], data['z']);
-			else dynCall(data['s'], func, data['x']);
+			else func.apply(null, data['x']);
 		}
 	},
 
@@ -52,30 +52,33 @@ mergeInto(LibraryManager.library, {
 	_wasmWorkerBlobUrl: "URL.createObjectURL(new Blob(['onmessage=function(d){onmessage=null;d=d.data;self.Module=d;importScripts(d.js);d.wasm=d.mem=d.js=0;}'], {type: 'application/javascript'}))",
 #endif
 
-	emscripten_create_wasm_worker__deps: ['wasm_workers', 'wasm_workers_id', '_wasm_worker_appendToQueue', '_wasm_worker_runPostMessage', '_wasm_worker_flushDelayedMessages'
+	_emscripten_create_wasm_worker__deps: ['wasm_workers', 'wasm_workers_id', '_wasm_worker_appendToQueue', '_wasm_worker_runPostMessage', '_wasm_worker_flushDelayedMessages'
 #if USE_WASM_WORKERS == 2
 		, '_wasmWorkerBlobUrl'
 #endif
 	],
-	emscripten_create_wasm_worker__postset: 'if (ENVIRONMENT_IS_WASM_WORKER) {\n'
+	_emscripten_create_wasm_worker__postset: 'if (ENVIRONMENT_IS_WASM_WORKER) {\n'
 		+ '_wasm_workers[0] = this;\n'
 		+ 'addEventListener("message", __wasm_worker_appendToQueue);\n'
 		+ '}\n',
-	emscripten_create_wasm_worker: function(stackLowestAddress, stackSize) {
+	_emscripten_create_wasm_worker: function(stackLowestAddress, stackSize) {
+#if ASSERTIONS
+		assert(stackLowestAddress % 16 == 0);
+		assert(stackSize % 16 == 0);
+#endif
 #if USE_WASM_WORKERS == 2
 		var worker = new Worker(__wasmWorkerBlobUrl);
 #else
 		var worker = new Worker(Module['wasmWorker']);
 #endif
 		// Craft the Module object for the Wasm Worker scope:
-		var stackBase = (stackLowestAddress + 15) & -16;
 		worker.postMessage({
 			'$ww': 1, // Signal that this Worker will be in a Wasm Worker scope, and not the main browser thread scope.
 			'wasm': Module['wasm'],
 			'js': Module['js'],
 			'mem': wasmMemory,
-			'sb': stackBase,
-			'sz': (stackLowestAddress + stackSize - stackBase) & -16,
+			'sb': stackLowestAddress,
+			'sz': stackSize,
 		});
 		worker.addEventListener('message', __wasm_worker_runPostMessage);
 		_wasm_workers[_wasm_workers_id] = worker;
@@ -86,6 +89,12 @@ mergeInto(LibraryManager.library, {
 			_wasm_workers[_wasm_workers_id].terminate();
 			delete _wasm_workers[_wasm_workers_id];
 		}
+	},
+	emscripten_terminate_all_wasm_workers: function() {
+		_wasm_workers.forEach((worker) => {
+			worker.terminate();
+		});
+		_wasm_workers = {};
 	},
 	emscripten_wasm_worker_post_function_v__deps: ['$dynCall'],
 	emscripten_wasm_worker_post_function_v: function(id, funcPtr) {
@@ -125,24 +134,30 @@ mergeInto(LibraryManager.library, {
 			'z': arg2
 		});
 	},
-	emscripten_wasm_worker_post_function_varargs__deps: ['$dynCall'],
-	emscripten_wasm_worker_post_function_varargs: function(id, funcPtr, sig, varargs) {
+	emscripten_wasm_worker_post_function_sig__deps: ['$readAsmConstArgs'],
+	emscripten_wasm_worker_post_function_sig: function(id, funcPtr, sigPtr, varargs) {
+#if ASSERTIONS
+		assert(id >= 0);
+		assert(funcPtr);
+		assert(sigPtr);
+		assert(UTF8ToString(sigPtr)[0] == 'v'); // User must remember to specify the return value as void.
+		assert(varargs);
+#endif
 		var worker = _wasm_workers[id];
 		worker.postMessage({
 			'_wsc': funcPtr, // "WaSm Call"
 			'a': -1,
-			's': 'v', /*todo craft varargs string*/
-			'x': [/*todo extract varargs*/]
+			'x': readAsmConstArgs(sigPtr, varargs)
 		});
 	},
 
-	_emscripten_atomics_wait_states: "['ok', 'timed-out', 'not-equal']",
-
+	_emscripten_atomics_wait_states: "['ok', 'not-equal', 'timed-out']",
+/*
 	emscripten_atomics_wait__deps: ['_emscripten_atomics_wait_states'],
 	emscripten_atomics_wait: function(addr, val, maxWaitMilliseconds) {
 		return __emscripten_atomics_wait_states.indexOf(Atomics.wait(HEAP32, addr >> 2, val, maxWaitMilliseconds));
 	},
-
+*/
 	// Partially polyfill Atomics.asyncWait() if not available in the browser.
 	// https://github.com/tc39/proposal-atomics-wait-async/blob/master/PROPOSAL.md
 	// This polyfill performs polling with setTimeout() to observe a change in the target memory location.
@@ -187,11 +202,11 @@ mergeInto(LibraryManager.library, {
 		});
 		// Implicit return 0 /*ATOMICS_WAIT_OK*/;
 	},
-
+/*
 	emscripten_atomics_notify: function(addr, count) {
 		return Atomics.notify(HEAP32, addr >> 2, count);
 	},
-
+*/
 	emscripten_navigator_hardware_concurrency: function() {
 #if ENVIRONMENT_MAY_BE_NODE
 		if (ENVIRONMENT_IS_NODE) return require('os').cpus().length;
@@ -204,19 +219,21 @@ mergeInto(LibraryManager.library, {
 	},
 
 	emscripten_lock_async_acquire: function(lock, asyncWaitFinished, userData, maxWaitMilliseconds) {
-		function dispatch(ret) {
+		function dispatch(val, ret) {
 			setTimeout(() => {
-				{{{ makeDynCall('viiii', 'asyncWaitFinished') }}}(lock, ret, ret, userData);
+				{{{ makeDynCall('viiii', 'asyncWaitFinished') }}}(lock, val, /*waitResult=*/ret, userData);
 			}, 0);
 		}
 		function tryAcquireLock() {
 			do {
 				var val = Atomics.compareExchange(HEAPU32, lock >> 2, 0/*zero represents lock being free*/, 1/*one represents lock being acquired*/);
-				if (!val) return dispatch(0/*'ok'*/);
+				if (!val) return dispatch(0, 0/*'ok'*/);
 				var wait = Atomics['waitAsync'](HEAPU32, lock >> 2, val, maxWaitMilliseconds);
 			} while(wait.value === 'not-equal');
-
-			if (wait.value) dispatch(1/*'timed-out'*/);
+#if ASSERTIONS
+			assert(wait.value === 'timed-out');
+#endif
+			if (wait.value) dispatch(val, 2/*'timed-out'*/);
 			else wait.then(tryAcquireLock);
 		}
 		tryAcquireLock();
@@ -229,7 +246,7 @@ mergeInto(LibraryManager.library, {
 	emscripten_semaphore_async_acquire: function(sem, num, asyncWaitFinished, userData, maxWaitMilliseconds) {
 		function dispatch(idx, ret) {
 			setTimeout(() => {
-				{{{ makeDynCall('viiii', 'asyncWaitFinished') }}}(sem, idx, ret, userData);
+				{{{ makeDynCall('viiii', 'asyncWaitFinished') }}}(sem, /*val=*/idx, /*waitResult=*/ret, userData);
 			}, 0);
 		}
 		function tryAcquireSemaphore() {
@@ -243,7 +260,7 @@ mergeInto(LibraryManager.library, {
 				var wait = Atomics['waitAsync'](HEAPU32, sem >> 2, ret, maxWaitMilliseconds);
 			} while(wait.value === 'not-equal');
 
-			if (wait.value) dispatch(-1/*idx*/, 1/*'timed-out'*/);			
+			if (wait.value) dispatch(-1/*idx*/, 2/*'timed-out'*/);
 			else wait.then(tryAcquireSemaphore);
 		}
 		tryAcquireSemaphore();

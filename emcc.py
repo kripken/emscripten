@@ -1680,16 +1680,18 @@ There is NO warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR P
         exit_with_error('-s PROXY_TO_PTHREAD=1 requires -s USE_PTHREADS to work!')
 
     if shared.Settings.USE_WASM_WORKERS:
+      if shared.Settings.SINGLE_FILE:
+        exit_with_error('-s SINGLE_FILE=1 is not supported with -s USE_WASM_WORKERS!')
       if shared.Settings.LINKABLE:
-        exit_with_error('-s LINKABLE=1 is not supported with -s USE_WASM_WORKERS=1!')
+        exit_with_error('-s LINKABLE=1 is not supported with -s USE_WASM_WORKERS!')
       if shared.Settings.SIDE_MODULE:
-        exit_with_error('-s SIDE_MODULE=1 is not supported with -s USE_WASM_WORKERS=1!')
+        exit_with_error('-s SIDE_MODULE=1 is not supported with -s USE_WASM_WORKERS!')
       if shared.Settings.MAIN_MODULE:
-        exit_with_error('-s MAIN_MODULE=1 is not supported with -s USE_WASM_WORKERS=1!')
+        exit_with_error('-s MAIN_MODULE=1 is not supported with -s USE_WASM_WORKERS!')
       if shared.Settings.PROXY_TO_WORKER:
-        exit_with_error('--proxy-to-worker is not supported with -s USE_WASM_WORKERS=1!')
+        exit_with_error('--proxy-to-worker is not supported with -s USE_WASM_WORKERS!')
       if shared.Settings.USE_PTHREADS:
-        exit_with_error('-pthread and -s USE_PTHREADS=1 are not supported with -s USE_WASM_WORKERS=1!')
+        exit_with_error('-pthread and -s USE_PTHREADS=1 are not supported with -s USE_WASM_WORKERS!')
 
     if shared.Settings.INITIAL_MEMORY % 65536 != 0:
       exit_with_error('For wasm, INITIAL_MEMORY must be a multiple of 64KB, was ' + str(shared.Settings.INITIAL_MEMORY))

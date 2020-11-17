@@ -11,11 +11,21 @@ extern "C" {
 #define emscripten_wasm_worker_t int
 #define EMSCRIPTEN_WASM_WORKER_ID_PARENT 0
 
+emscripten_wasm_worker_t _emscripten_create_wasm_worker(void *stackLowestAddress, uint32_t stackSize);
+
 // If not building with Wasm workers enabled (-s USE_WASM_WORKERS=0), returns 0.
-emscripten_wasm_worker_t emscripten_create_wasm_worker(void *stackLowestAddress, uint32_t stackSize);
+emscripten_wasm_worker_t emscripten_create_wasm_worker(void *stackLowestAddress, uint32_t stackSize)
+{
+	uintptr_t stackBase = ((uintptr_t)stackLowestAddress + 15) & -16;
+	stackSize = ((uintptr_t)stackLowestAddress + stackSize - stackBase) & -16;
+	return _emscripten_create_wasm_worker((void*)stackBase, stackSize);
+}
 
 // Exists, but is a no-op if not building with Wasm Workers enabled (-s USE_WASM_WORKERS=0)
 void emscripten_terminate_wasm_worker(emscripten_wasm_worker_t id);
+
+// Exists, but is a no-op if not building with Wasm Workers enabled (-s USE_WASM_WORKERS=0)
+void emscripten_terminate_all_wasm_workers(void);
 
 // postMessage()s a function call over to the given Wasm Worker.
 // Note that if the Wasm Worker runs in an infinite loop, it will not process the postMessage
@@ -26,33 +36,48 @@ void emscripten_wasm_worker_post_function_v(emscripten_wasm_worker_t id, void (*
 void emscripten_wasm_worker_post_function_vi(emscripten_wasm_worker_t id, void (*funcPtr)(int), int arg0);
 void emscripten_wasm_worker_post_function_vii(emscripten_wasm_worker_t id, void (*funcPtr)(int, int), int arg0, int arg1);
 void emscripten_wasm_worker_post_function_viii(emscripten_wasm_worker_t id, void (*funcPtr)(int, int, int), int arg0, int arg1, int arg2);
-void emscripten_wasm_worker_post_function_sig(emscripten_wasm_worker_t id, void *funcPtr, EM_FUNC_SIGNATURE sig, ...);
+void emscripten_wasm_worker_post_function_sig(emscripten_wasm_worker_t id, void *funcPtr, const char *sig, ...);
 
 #define ATOMICS_WAIT_RESULT_T int
-#define ATOMICS_WAIT_OK 0
-#define ATOMICS_WAIT_TIMED_OUT 1
-#define ATOMICS_WAIT_NOT_EQUAL 2
 
-// If the given memory address contains value val, puts the calling
+// Numbering dictated by https://github.com/WebAssembly/threads/blob/master/proposals/threads/Overview.md#wait
+#define ATOMICS_WAIT_OK 0
+#define ATOMICS_WAIT_NOT_EQUAL 1
+#define ATOMICS_WAIT_TIMED_OUT 2
+
+// If the given memory address contains value 'expectedValue', puts the calling
 // thread to sleep to wait for that address to be notified.
 // Returns one of the ATOMICS_WAIT_* return codes.
-ATOMICS_WAIT_RESULT_T emscripten_atomics_wait(volatile void *addr, uint32_t val, double maxWaitMilliseconds);
+ATOMICS_WAIT_RESULT_T emscripten_atomic_wait_i32(int32_t *addr, int expectedValue, int64_t maxWaitMilliseconds)
+{
+	return __builtin_wasm_atomic_wait_i32(addr, expectedValue, maxWaitMilliseconds);
+}
 
-ATOMICS_WAIT_RESULT_T emscripten_atomics_async_wait(volatile void *addr,
+ATOMICS_WAIT_RESULT_T emscripten_atomic_wait_i64(int64_t *addr, int64_t expectedValue, int64_t maxWaitMilliseconds)
+{
+	return __builtin_wasm_atomic_wait_i64(addr, expectedValue, maxWaitMilliseconds);
+}
+
+int64_t emscripten_atomic_notify(int32_t *addr, int64_t count)
+{
+	return __builtin_wasm_atomic_notify(addr, count);
+}
+
+ATOMICS_WAIT_RESULT_T emscripten_atomic_async_wait(volatile void *addr,
                                                     uint32_t val,
-                                                    void (*asyncWaitFinished)(volatile void *addr, uint32_t val, ATOMICS_WAIT_RESULT_T result, void *userData),
+                                                    void (*asyncWaitFinished)(volatile void *addr, uint32_t val, ATOMICS_WAIT_RESULT_T waitResult, void *userData),
                                                     void *userData,
                                                     double maxWaitMilliseconds);
-
+/*
 // Notifies the given number of threads waiting on a location.
 // Pass count == INT_MAX to notify all waiters on the given location.
 // Returns the number of threads that were woken up.
 int emscripten_atomics_notify(volatile void *addr, int count);
-
+*/
 void emscripten_wasm_worker_sleep(double msecs)
 {
 	uint32_t addr = 0;
-	emscripten_atomics_wait((void*)&addr, 0, msecs);
+	emscripten_atomic_wait_i32((int32_t*)&addr, 0, msecs);
 }
 
 int emscripten_navigator_hardware_concurrency(void);
@@ -73,14 +98,27 @@ void emscripten_lock_init(emscripten_lock_t *lock)
 	emscripten_atomic_store_u32((void*)lock, EMSCRIPTEN_LOCK_T_STATIC_INITIALIZER);
 }
 
-void emscripten_lock_wait_acquire(emscripten_lock_t *lock, double maxWaitMilliseconds) // only in worker
+// Returns true if the lock was successfully acquired. False on timeout.
+EM_BOOL emscripten_lock_wait_acquire(emscripten_lock_t *lock, double maxWaitMilliseconds) // only in worker
 {
 	emscripten_lock_t val;
+	double waitEnd = 0;
 	do
 	{
 		val = emscripten_atomic_cas_u32((void*)lock, 0, 1);
-		if (val) // TODO: shave off maxWaitMilliseconds
-			emscripten_atomics_wait((void*)lock, val, maxWaitMilliseconds);
+		if (val)
+		{
+			double t = emscripten_performance_now();
+			if (waitEnd)
+			{
+				if (t > waitEnd) return EM_FALSE;
+			}
+			else
+			{
+				waitEnd = emscripten_performance_now() + maxWaitMilliseconds;
+			}
+			emscripten_atomic_wait_i32((int32_t*)lock, val, maxWaitMilliseconds);
+		}
 	} while(val);
 }
 
@@ -91,13 +129,13 @@ void emscripten_lock_waitinf_acquire(emscripten_lock_t *lock) // only in worker
 	{
 		val = emscripten_atomic_cas_u32((void*)lock, 0, 1);
 		if (val)
-			emscripten_atomics_wait((void*)lock, val, EMSCRIPTEN_WAIT_INFINITY);
+			emscripten_atomic_wait_i32((int32_t*)lock, val, EMSCRIPTEN_WAIT_INFINITY);
 	} while(val);
 }
 
 // main thread + worker, raise an event when the lock is acquired. If you use this API in Worker, you cannot run an infinite loop.
 ATOMICS_WAIT_RESULT_T emscripten_lock_async_acquire(emscripten_lock_t *lock,
-                                                    void (*asyncWaitFinished)(volatile void *addr, uint32_t val, ATOMICS_WAIT_RESULT_T result, void *userData),
+                                                    void (*asyncWaitFinished)(volatile void *addr, uint32_t val, ATOMICS_WAIT_RESULT_T waitResult, void *userData),
                                                     void *userData,
                                                     double maxWaitMilliseconds);
 
@@ -110,7 +148,7 @@ EM_BOOL emscripten_lock_try_acquire(emscripten_lock_t *lock) // main thread + wo
 void emscripten_lock_release(emscripten_lock_t *lock)
 {
 	emscripten_atomic_store_u32((void*)lock, 0);
-	emscripten_atomics_notify((void*)lock, 1);
+	emscripten_atomic_notify((int32_t*)lock, 1);
 }
 
 #define emscripten_semaphore_t volatile uint32_t
@@ -153,7 +191,7 @@ int emscripten_semaphore_wait_acquire(emscripten_semaphore_t *sem, int num, doub
 		while(val < num)
 		{
 			// TODO: Shave off maxWaitMilliseconds
-			ATOMICS_WAIT_RESULT_T waitResult = emscripten_atomics_wait(sem, val, maxWaitMilliseconds);
+			ATOMICS_WAIT_RESULT_T waitResult = emscripten_atomic_wait_i32((int32_t*)sem, val, maxWaitMilliseconds);
 			if (waitResult == ATOMICS_WAIT_TIMED_OUT) return -1;
 			val = emscripten_atomic_load_u32((void*)sem);
 		}
@@ -171,7 +209,7 @@ int emscripten_semaphore_waitinf_acquire(emscripten_semaphore_t *sem, int num)
 	{
 		while(val < num)
 		{
-			emscripten_atomics_wait(sem, val, EMSCRIPTEN_WAIT_INFINITY);
+			emscripten_atomic_wait_i32((int32_t*)sem, val, EMSCRIPTEN_WAIT_INFINITY);
 			val = emscripten_atomic_load_u32((void*)sem);
 		}
 		int ret = (int)emscripten_atomic_cas_u32((void*)sem, val, val - num);
@@ -192,7 +230,7 @@ int emscripten_semaphore_waitinf_acquire(emscripten_semaphore_t *sem, int num)
 uint32_t emscripten_semaphore_release(emscripten_semaphore_t *sem, int num)
 {
 	uint32_t ret = emscripten_atomic_add_u32((void*)sem, num);
-	emscripten_atomics_notify((void*)sem, num);
+	emscripten_atomic_notify((int*)sem, num);
 	return ret;
 }
 
