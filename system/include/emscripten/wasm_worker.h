@@ -58,6 +58,8 @@ ATOMICS_WAIT_RESULT_T emscripten_atomic_wait_i64(int64_t *addr, int64_t expected
 	return __builtin_wasm_atomic_wait_i64(addr, expectedValue, maxWaitMilliseconds);
 }
 
+#define EMSCRIPTEN_NOTIFY_ALL_WAITERS (-1LL)
+
 int64_t emscripten_atomic_notify(int32_t *addr, int64_t count)
 {
 	return __builtin_wasm_atomic_notify(addr, count);
@@ -112,6 +114,7 @@ EM_BOOL emscripten_lock_wait_acquire(emscripten_lock_t *lock, double maxWaitMill
 			if (waitEnd)
 			{
 				if (t > waitEnd) return EM_FALSE;
+				maxWaitMilliseconds = waitEnd - t;
 			}
 			else
 			{
@@ -232,6 +235,35 @@ uint32_t emscripten_semaphore_release(emscripten_semaphore_t *sem, int num)
 	uint32_t ret = emscripten_atomic_add_u32((void*)sem, num);
 	emscripten_atomic_notify((int*)sem, num);
 	return ret;
+}
+
+#define emscripten_condvar_t volatile uint32_t
+
+// Use with syntax emscripten_condvar_t cv = EMSCRIPTEN_CONDVAR_T_STATIC_INITIALIZER();
+#define EMSCRIPTEN_CONDVAR_T_STATIC_INITIALIZER() ((int)(0))
+
+void emscripten_condvar_init(emscripten_condvar_t *condvar)
+{
+	*condvar = EMSCRIPTEN_CONDVAR_T_STATIC_INITIALIZER();
+}
+
+void emscripten_condvar_waitinf(emscripten_condvar_t *condvar, emscripten_lock_t *lock)
+{
+	int val = emscripten_atomic_load_u32((void*)condvar);
+	emscripten_lock_release(lock);
+	emscripten_atomic_wait_i32((int32_t*)condvar, val, EMSCRIPTEN_WAIT_INFINITY);
+	emscripten_lock_waitinf_acquire(lock);
+}
+
+// TODO:
+//void emscripten_condvar_wait(emscripten_condvar_t *condvar, emscripten_lock_t *lock, double maxWaitMilliseconds);
+//void emscripten_condvar_wait_async(emscripten_condvar_t *condvar, emscripten_lock_t *lock, double maxWaitMilliseconds);
+
+// Pass numWaitersToSignal == EMSCRIPTEN_NOTIFY_ALL_WAITERS to wake all waiters ("broadcast").
+void emscripten_condvar_signal(emscripten_condvar_t *condvar, int64_t numWaitersToSignal)
+{
+	emscripten_atomic_add_u32((void*)condvar, 1);
+	emscripten_atomic_notify(condvar, numWaitersToSignal);
 }
 
 #ifdef __cplusplus
