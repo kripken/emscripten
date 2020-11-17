@@ -1636,6 +1636,10 @@ var ABORT_ON_WASM_EXCEPTIONS = 0;
 // Implies STANDALONE_WASM.
 var PURE_WASI = 0;
 
+// Logs all Wasm functions that are executed. The user will have to provide a log_function
+// in Javascript to choose how the functions should be logged.
+var INSTRUMENT = 0;
+
 //===========================================
 // Internal, used for testing only, from here
 //===========================================
