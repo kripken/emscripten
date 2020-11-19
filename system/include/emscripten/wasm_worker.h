@@ -14,8 +14,6 @@ extern "C" {
 #define emscripten_wasm_worker_t int
 #define EMSCRIPTEN_WASM_WORKER_ID_PARENT 0
 
-emscripten_wasm_worker_t _emscripten_create_wasm_worker(void *stackLowestAddress, uint32_t stackSize);
-
 // If not building with Wasm workers enabled (-s USE_WASM_WORKERS=0), returns 0.
 emscripten_wasm_worker_t emscripten_create_wasm_worker(void *stackLowestAddress, uint32_t stackSize);
 

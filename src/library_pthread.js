@@ -772,7 +772,9 @@ var LibraryPThread = {
       // adjust it to Emscripten convention that the
       // stack grows upwards instead.
       stackBase -= stackSize;
+#if ASSERTIONS
       assert(stackBase > 0);
+#endif
     }
 
     // Allocate thread block (pthread_t structure).
@@ -1172,7 +1174,7 @@ var LibraryPThread = {
   emscripten_futex_wait: function(addr, val, timeout) {
     if (addr <= 0 || addr > HEAP8.length || addr&3 != 0) return -{{{ cDefine('EINVAL') }}};
     // We can do a normal blocking wait anywhere but on the main browser thread.
-    if (!ENVIRONMENT_IS_WEB) {
+    if (ENVIRONMENT_IS_WORKER) {
 #if PTHREADS_PROFILING
       PThread.setThreadStatusConditional(_pthread_self(), {{{ cDefine('EM_THREAD_STATUS_RUNNING') }}}, {{{ cDefine('EM_THREAD_STATUS_WAITFUTEX') }}});
 #endif

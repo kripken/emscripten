@@ -1,6 +1,8 @@
 #include <emscripten/wasm_worker.h>
 #include <emscripten/threading.h>
 
+emscripten_wasm_worker_t _emscripten_create_wasm_worker(void *stackLowestAddress, uint32_t stackSize);
+
 emscripten_wasm_worker_t emscripten_create_wasm_worker(void *stackLowestAddress, uint32_t stackSize)
 {
 	uintptr_t stackBase = ((uintptr_t)stackLowestAddress + 15) & -16;

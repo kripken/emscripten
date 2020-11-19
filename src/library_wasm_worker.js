@@ -172,12 +172,7 @@ mergeInto(LibraryManager.library, {
 	},
 
 	_emscripten_atomics_wait_states: "['ok', 'not-equal', 'timed-out']",
-/*
-	emscripten_atomics_wait__deps: ['_emscripten_atomics_wait_states'],
-	emscripten_atomics_wait: function(addr, val, maxWaitMilliseconds) {
-		return __emscripten_atomics_wait_states.indexOf(Atomics.wait(HEAP32, addr >> 2, val, maxWaitMilliseconds));
-	},
-*/
+
 	// Partially polyfill Atomics.asyncWait() if not available in the browser.
 	// https://github.com/tc39/proposal-atomics-wait-async/blob/master/PROPOSAL.md
 	// This polyfill performs polling with setTimeout() to observe a change in the target memory location.
@@ -222,11 +217,7 @@ mergeInto(LibraryManager.library, {
 		});
 		// Implicit return 0 /*ATOMICS_WAIT_OK*/;
 	},
-/*
-	emscripten_atomics_notify: function(addr, count) {
-		return Atomics.notify(HEAP32, addr >> 2, count);
-	},
-*/
+
 	emscripten_navigator_hardware_concurrency: function() {
 #if ENVIRONMENT_MAY_BE_NODE
 		if (ENVIRONMENT_IS_NODE) return require('os').cpus().length;
