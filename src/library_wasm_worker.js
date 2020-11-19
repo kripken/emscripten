@@ -96,7 +96,15 @@ mergeInto(LibraryManager.library, {
 		});
 		_wasm_workers = {};
 	},
+	emscripten_current_thread_is_wasm_worker: function() {
+#if USE_WASM_WORKERS
+		return ENVIRONMENT_IS_WASM_WORKER;
+#else
+		// implicit return 0;
+#endif
+	},
 	emscripten_wasm_worker_post_function_v__deps: ['$dynCall'],
+	emscripten_wasm_worker_post_function_v__sig: 'vii',
 	emscripten_wasm_worker_post_function_v: function(id, funcPtr) {
 		var worker = _wasm_workers[id];
 		worker.postMessage({
@@ -104,8 +112,9 @@ mergeInto(LibraryManager.library, {
 			'a': 0,
 		});
 	},
-	emscripten_wasm_worker_post_function_vi__deps: ['$dynCall'],
-	emscripten_wasm_worker_post_function_vi: function(id, funcPtr, arg0) {
+	emscripten_wasm_worker_post_function_1__deps: ['$dynCall'],
+	emscripten_wasm_worker_post_function_1__sig: 'viid',
+	emscripten_wasm_worker_post_function_1: function(id, funcPtr, arg0) {
 		var worker = _wasm_workers[id];
 		worker.postMessage({
 			'_wsc': funcPtr, // "WaSm Call"
@@ -113,8 +122,12 @@ mergeInto(LibraryManager.library, {
 			'x': arg0
 		});
 	},
-	emscripten_wasm_worker_post_function_vii__deps: ['$dynCall'],
-	emscripten_wasm_worker_post_function_vii: function(id, funcPtr, arg0, arg1) {
+	emscripten_wasm_worker_post_function_vi: 'emscripten_wasm_worker_post_function_1',
+	emscripten_wasm_worker_post_function_vd: 'emscripten_wasm_worker_post_function_1',
+
+	emscripten_wasm_worker_post_function_2__deps: ['$dynCall'],
+	emscripten_wasm_worker_post_function_2__sig: 'viidd',
+	emscripten_wasm_worker_post_function_2: function(id, funcPtr, arg0, arg1) {
 		var worker = _wasm_workers[id];
 		worker.postMessage({
 			'_wsc': funcPtr, // "WaSm Call"
@@ -123,8 +136,12 @@ mergeInto(LibraryManager.library, {
 			'y': arg1
 		});
 	},
-	emscripten_wasm_worker_post_function_viii__deps: ['$dynCall'],
-	emscripten_wasm_worker_post_function_viii: function(id, funcPtr, arg0, arg1, arg2) {
+	emscripten_wasm_worker_post_function_vii: 'emscripten_wasm_worker_post_function_2',
+	emscripten_wasm_worker_post_function_vdi: 'emscripten_wasm_worker_post_function_2',
+
+	emscripten_wasm_worker_post_function_3__deps: ['$dynCall'],
+	emscripten_wasm_worker_post_function_3__sig: 'viiddd',
+	emscripten_wasm_worker_post_function_3: function(id, funcPtr, arg0, arg1, arg2) {
 		var worker = _wasm_workers[id];
 		worker.postMessage({
 			'_wsc': funcPtr, // "WaSm Call"
@@ -134,6 +151,9 @@ mergeInto(LibraryManager.library, {
 			'z': arg2
 		});
 	},
+	emscripten_wasm_worker_post_function_viii: 'emscripten_wasm_worker_post_function_3',
+	emscripten_wasm_worker_post_function_vddd: 'emscripten_wasm_worker_post_function_3',
+
 	emscripten_wasm_worker_post_function_sig__deps: ['$readAsmConstArgs'],
 	emscripten_wasm_worker_post_function_sig: function(id, funcPtr, sigPtr, varargs) {
 #if ASSERTIONS

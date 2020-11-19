@@ -1204,12 +1204,14 @@ class libpthread(AsanInstrumentedLibrary, MuslInternalLibrary, MTLibrary):
       files += [shared.path_from_root('system', 'lib', 'pthread', 'library_pthread_atomics.c')]
       return files
     elif self.is_ww:
-      return [shared.path_from_root('system', 'lib', 'pthread', 'library_pthread_atomics.c')]
+      return [shared.path_from_root('system', 'lib', 'pthread', 'library_pthread_atomics.c'),
+              shared.path_from_root('system', 'lib', 'pthread', 'library_wasm_worker.c')]
     else:
       return [shared.path_from_root('system', 'lib', 'pthread', 'library_pthread_stub.c')]
 
   def get_base_name_prefix(self):
-    return 'libpthread' if self.is_mt else 'libpthread_stub'
+    if self.is_mt or self.is_ww: return 'libpthread'
+    return 'libpthread_stub'
 
 
 class CompilerRTLibrary(Library):
