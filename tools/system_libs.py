@@ -1197,6 +1197,7 @@ class libpthread(AsanInstrumentedLibrary, MuslInternalLibrary, MTLibrary):
           'pthread_mutex_getprioceiling.c', 'pthread_setcanceltype.c',
           'pthread_condattr_setclock.c', 'pthread_mutex_init.c',
           'pthread_setspecific.c', 'pthread_setcancelstate.c',
+          'pthread_detach.c',
         ])
       files += files_in_path(
         path_components=['system', 'lib', 'pthread'],

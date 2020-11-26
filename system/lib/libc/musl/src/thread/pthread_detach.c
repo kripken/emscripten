@@ -1,6 +1,11 @@
 #include "pthread_impl.h"
 #include <threads.h>
 
+// XXX Emscripten implements pthread_join directly rather than __pthread_join
+#ifdef __EMSCRIPTEN__
+#define __pthread_join pthread_join
+#endif
+
 int __pthread_join(pthread_t, void **);
 
 static int __pthread_detach(pthread_t t)
