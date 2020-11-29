@@ -2575,6 +2575,14 @@ Module["preRun"].push(function () {
       print(opts)
       self.btest(path_from_root('tests', 'webgl_create_context.cpp'), args=opts + ['-lGL'], expected='0')
 
+  # This test supersedes the one above, but it's skipped in the CI because anti-aliasing is not well supported by the Mesa software renderer.
+  @requires_threads
+  @requires_graphics_hardware
+  def test_html5_webgl_create_context_ext(self):
+    for opts in [[], ['-O2', '--closure', '1']]:
+      print(opts)
+      self.btest(path_from_root('tests', 'webgl_create_context_ext.cpp'), args=opts + ['-lGL'], expected='0')
+
   @requires_graphics_hardware
   # Verify bug https://github.com/emscripten-core/emscripten/issues/4556: creating a WebGL context to Module.canvas without an ID explicitly assigned to it.
   def test_html5_webgl_create_context2(self):

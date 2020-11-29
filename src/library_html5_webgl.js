@@ -31,10 +31,10 @@ var LibraryHtml5WebGL = {
     }
 
     HEAP32[a + ({{{ C_STRUCTS.EmscriptenWebGLContextAttributes.alpha }}}>>2)] =
-    HEAP32[a + ({{{ C_STRUCTS.EmscriptenWebGLContextAttributes.depth }}}>>2)] = 
-    HEAP32[a + ({{{ C_STRUCTS.EmscriptenWebGLContextAttributes.antialias }}}>>2)] = 
-    HEAP32[a + ({{{ C_STRUCTS.EmscriptenWebGLContextAttributes.premultipliedAlpha }}}>>2)] = 
-    HEAP32[a + ({{{ C_STRUCTS.EmscriptenWebGLContextAttributes.majorVersion }}}>>2)] = 
+    HEAP32[a + ({{{ C_STRUCTS.EmscriptenWebGLContextAttributes.depth }}}>>2)] =
+    HEAP32[a + ({{{ C_STRUCTS.EmscriptenWebGLContextAttributes.antialias }}}>>2)] =
+    HEAP32[a + ({{{ C_STRUCTS.EmscriptenWebGLContextAttributes.premultipliedAlpha }}}>>2)] =
+    HEAP32[a + ({{{ C_STRUCTS.EmscriptenWebGLContextAttributes.majorVersion }}}>>2)] =
     HEAP32[a + ({{{ C_STRUCTS.EmscriptenWebGLContextAttributes.enableExtensionsByDefault }}}>>2)] = 1;
 
 #if USE_PTHREADS
@@ -53,6 +53,9 @@ var LibraryHtml5WebGL = {
   emscripten_webgl_create_context__sig: 'iii',
   emscripten_webgl_create_context: 'emscripten_webgl_do_create_context',
 
+  emscripten_webgl_create_context_ptr__sig: 'iiii',
+  emscripten_webgl_create_context_ptr: 'emscripten_webgl_do_create_context_ptr',
+
   emscripten_webgl_get_current_context__sig: 'i',
   emscripten_webgl_get_current_context: 'emscripten_webgl_do_get_current_context',
 
@@ -64,13 +67,13 @@ var LibraryHtml5WebGL = {
   // for all the messages, one of which is this GL-using one. This won't be
   // called if GL is not linked in, but also make sure to not add a dep on
   // GL unnecessarily from here, as that would cause a linker error.
-  emscripten_webgl_do_create_context__deps: [
+  emscripten_webgl_do_create_context_internal__deps: [
 #if LibraryManager.has('library_webgl.js')
   '$GL',
 #endif
   '$JSEvents', '_emscripten_webgl_power_preferences', '$findEventTarget', '$findCanvasEventTarget'],
   // This function performs proxying manually, depending on the style of context that is to be created.
-  emscripten_webgl_do_create_context: function(target, attributes) {
+  emscripten_webgl_do_create_context_internal: function(target, attributes) {
 #if ASSERTIONS
     assert(attributes);
 #endif
@@ -118,7 +121,13 @@ var LibraryHtml5WebGL = {
           {{{ makeSetValue('attributes', C_STRUCTS.EmscriptenWebGLContextAttributes.renderViaOffscreenBackBuffer, '1', 'i32') }}}
           {{{ makeSetValue('attributes', C_STRUCTS.EmscriptenWebGLContextAttributes.preserveDrawingBuffer, '1', 'i32') }}}
         }
-        return _emscripten_sync_run_in_main_thread_2({{{ cDefine('EM_PROXIED_CREATE_CONTEXT') }}}, target, attributes);
+        var handle = _emscripten_sync_run_in_main_thread_2({{{ cDefine('EM_PROXIED_CREATE_CONTEXT') }}}, target, attributes);
+        return [
+          handle,
+          handle ?
+            {{{ cDefine('EMSCRIPTEN_RESULT_SUCCESS') }}} :
+            {{{ cDefine('EMSCRIPTEN_RESULT_FAILED') }}}
+        ];
       }
     }
 #endif
@@ -127,7 +136,7 @@ var LibraryHtml5WebGL = {
 #if GL_DEBUG
       console.error('emscripten_webgl_create_context failed: Unknown canvas target "' + targetStr + '"!');
 #endif
-      return 0;
+      return [0,{{{ cDefine('EMSCRIPTEN_RESULT_UNKNOWN_TARGET') }}}];
     }
 
 #if OFFSCREENCANVAS_SUPPORT
@@ -153,7 +162,7 @@ var LibraryHtml5WebGL = {
 #if GL_DEBUG
         console.error('emscripten_webgl_create_context failed: OffscreenCanvas is not supported but explicitSwapControl was requested!');
 #endif
-        return 0;
+        return [0, {{{ cDefine('EMSCRIPTEN_RESULT_NOT_SUPPORTED') }}}];
 #endif
       }
 
@@ -172,7 +181,7 @@ var LibraryHtml5WebGL = {
 #if GL_DEBUG
           console.error('OffscreenCanvas is supported, and canvas "' + canvas.id + '" has already before been transferred offscreen, but there is no known OffscreenCanvas with that name!');
 #endif
-          return 0;
+          return [0, {{{ cDefine('EMSCRIPTEN_RESULT_INVALID_TARGET') }}}];
         }
         canvas = GL.offscreenCanvases[canvas.id];
       }
@@ -190,14 +199,32 @@ var LibraryHtml5WebGL = {
 #if GL_DEBUG
       console.error('emscripten_webgl_create_context failed: explicitSwapControl is not supported, please rebuild with -s OFFSCREENCANVAS_SUPPORT=1 to enable targeting the experimental OffscreenCanvas specification, or rebuild with -s OFFSCREEN_FRAMEBUFFER=1 to emulate explicitSwapControl in the absence of OffscreenCanvas support!');
 #endif
-      return 0;
+      return [0, {{{ cDefine('EMSCRIPTEN_RESULT_NOT_SUPPORTED') }}}];
     }
 #endif // ~!OFFSCREEN_FRAMEBUFFER
 
 #endif // ~!OFFSCREENCANVAS_SUPPORT
 
-    var contextHandle = GL.createContext(canvas, contextAttributes);
-    return contextHandle;
+    var handle = GL.createContext(canvas, contextAttributes);
+    return [
+      handle,
+      handle ?
+        {{{ cDefine('EMSCRIPTEN_RESULT_SUCCESS') }}} :
+        {{{ cDefine('EMSCRIPTEN_RESULT_FAILED') }}}
+    ];
+  },
+  emscripten_webgl_do_create_context_ptr__deps: ['emscripten_webgl_do_create_context_internal'],
+  emscripten_webgl_do_create_context_ptr:function(target, attributes, outHandle) {
+#if ASSERTIONS
+    assert(outHandle);
+#endif
+    var [handle, resultCode] = _emscripten_webgl_do_create_context_internal(target, attributes);
+    HEAP32[outHandle >> 2] = handle;
+    return resultCode;
+  },
+  emscripten_webgl_do_create_context__deps: ['emscripten_webgl_do_create_context_internal'],
+  emscripten_webgl_do_create_context:function(target, attributes) {
+    return _emscripten_webgl_do_create_context_internal(target, attributes)[0];
   },
 #if USE_PTHREADS && OFFSCREEN_FRAMEBUFFER
   // Runs on the calling thread, proxies if needed.
@@ -608,7 +635,7 @@ function handleWebGLProxying(funcs) {
     } else if (targetingOffscreenFramebuffer) {
       // When targeting only OFFSCREEN_FRAMEBUFFER, unconditionally proxy all GL calls to
       // main thread.
-      funcs[i + '__proxy'] = 'sync';        
+      funcs[i + '__proxy'] = 'sync';
     } else {
       // Building without OFFSCREENCANVAS_SUPPORT or OFFSCREEN_FRAMEBUFFER; or building
       // with OFFSCREENCANVAS_SUPPORT and no OFFSCREEN_FRAMEBUFFER: the application
