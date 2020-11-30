@@ -84,8 +84,8 @@ int main()
 		CreateThread(i);
 
 	// Join all threads and create more.
-        while (numThreadsToCreate > 0)
-        {
+	while (numThreadsToCreate > 0)
+	{
 		for(int i = 0; i < NUM_THREADS; ++i)
 		{
 			if (thread[i])
@@ -104,6 +104,7 @@ int main()
 			}
 		}
 	}
+	printf("All threads joined.\n");
 #ifdef REPORT_RESULT
 	REPORT_RESULT(0);
 #endif

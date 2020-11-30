@@ -12,20 +12,19 @@
 
 #include <stdio.h>
 
-#ifdef __EMSCRIPTEN__
-
-#include <emscripten.h>
-
 #ifdef __cplusplus
 extern "C" {
 #endif
+
 void _ReportResult(int result, int sync);
 void _MaybeReportResult(int result, int sync);
+
 #ifdef __cplusplus
 }
 #endif
 
-#if __EMSCRIPTEN_PTHREADS__
+#if defined __EMSCRIPTEN__ && defined __EMSCRIPTEN_PTHREADS__
+  #include <emscripten.h>
   #include <emscripten/threading.h>
   #define REPORT_RESULT(result) emscripten_async_run_in_main_runtime_thread(EM_FUNC_SIG_VII, _ReportResult, (result), 0)
   #define REPORT_RESULT_SYNC(result) emscripten_sync_run_in_main_runtime_thread(EM_FUNC_SIG_VII, _ReportResult, (result), 1)
@@ -37,18 +36,5 @@ void _MaybeReportResult(int result, int sync);
   #define MAYBE_REPORT_RESULT(result) _MaybeReportResult((result), 0)
   #define MAYBE_REPORT_RESULT_SYNC(result) _MaybeReportResult((result), 1)
 #endif
-
-#else
-
-#include <stdlib.h>
-#define REPORT_RESULT(result)       \
-  do {                              \
-    printf("result: %d\n", result); \
-    exit(result);                   \
-  }
-
-#define REPORT_RESULT_SYNC REPORT_RESULT
-
-#endif // __EMSCRIPTEN__
 
 #endif // REPORT_RESULT_H_

@@ -80,8 +80,14 @@ logger = logging.getLogger("runner")
 
 # User can specify an environment variable EMTEST_BROWSER to force the browser
 # test suite to run using another browser command line than the default system
-# browser.  Setting '0' as the browser disables running a browser (but we still
-# see tests compile)
+# browser.
+# There are two special value that can be used here if running in an actual
+# browser is not desired:
+#  EMTEST_BROWSER=0 : This will disable the actual running of the test and simply
+#                     verify that it compiles and links.
+#  EMTEST_BROWSER=node : This will attempt to run the browser test under node.
+#                        For most browser tests this does not work, but it can
+#                        be useful for running pthread tests under node.
 EMTEST_BROWSER = os.getenv('EMTEST_BROWSER')
 
 EMTEST_DETECT_TEMPFILE_LEAKS = int(os.getenv('EMTEST_DETECT_TEMPFILE_LEAKS', '0'))
@@ -107,7 +113,7 @@ if EMTEST_VERBOSE:
 
 # checks if browser testing is enabled
 def has_browser():
-  return EMTEST_BROWSER != '0'
+  return EMTEST_BROWSER not in ('0', 'node')
 
 
 # Generic decorator that calls a function named 'condition' on the test class and
@@ -1499,7 +1505,7 @@ class BrowserCore(RunnerCore):
 
   def btest(self, filename, expected=None, reference=None, force_c=False,
             reference_slack=0, manual_reference=False, post_build=None,
-            args=[], outfile='test.html', message='.', also_proxied=False,
+            args=[], message='.', also_proxied=False,
             url_suffix='', timeout=None, also_asmjs=False,
             manually_trigger_reftest=False, extra_tries=1):
     assert expected or reference, 'a btest must either expect an output, or have a reference image'
@@ -1514,6 +1520,8 @@ class BrowserCore(RunnerCore):
     args = args + ['-DEMTEST_PORT_NUMBER=%d' % self.port,
                    '-include', path_from_root('tests', 'report_result.h'),
                    path_from_root('tests', 'report_result.cpp')]
+    if EMTEST_BROWSER == 'node':
+      args.append('-DEMTEST_NODE')
     if filename_is_src:
       filepath = os.path.join(self.get_dir(), 'main.c' if force_c else 'main.cpp')
       with open(filepath, 'w') as f:
@@ -1526,6 +1534,7 @@ class BrowserCore(RunnerCore):
       self.reftest(path_from_root('tests', reference), manually_trigger=manually_trigger_reftest)
       if not manual_reference:
         args += ['--pre-js', 'reftest.js', '-s', 'GL_TESTING=1']
+    outfile = 'test.html'
     all_args = ['-s', 'IN_TEST_HARNESS=1', filepath, '-o', outfile] + args
     # print('all args:', all_args)
     try_delete(outfile)
@@ -1535,7 +1544,12 @@ class BrowserCore(RunnerCore):
       post_build()
     if not isinstance(expected, list):
       expected = [expected]
-    self.run_browser(outfile + url_suffix, message, ['/report_result?' + e for e in expected], timeout=timeout, extra_tries=extra_tries)
+    if EMTEST_BROWSER == 'node':
+      with js_engines_modify([config.NODE_JS + ['--experimental-wasm-threads', '--experimental-wasm-bulk-memory']]):
+        output = self.run_js('test.js')
+      self.assertContained('RESULT: ' + expected[0], output)
+    else:
+      self.run_browser(outfile + url_suffix, message, ['/report_result?' + e for e in expected], timeout=timeout, extra_tries=extra_tries)
 
     # Tests can opt into being run under asmjs as well
     if 'WASM=0' not in args and (also_asmjs or self.also_asmjs):

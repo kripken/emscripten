@@ -381,10 +381,13 @@ jobs:
           test_targets: "wasm0"
   test-wasm2:
     executor: bionic
+    environment:
+      EMTEST_BROWSER: "node"
     steps:
       - run-tests:
           # also add a few asan tests
-          test_targets: "wasm2 asan.test_embind* asan.test_abort_on_exceptions asan.test_ubsan_full_left_shift_fsanitize_integer"
+          # also add a single test of EMTEST_BROWSER=node
+          test_targets: "wasm2 asan.test_embind* asan.test_abort_on_exceptions asan.test_ubsan_full_left_shift_fsanitize_integer browser.test_pthread_join"
   test-wasm3:
     executor: bionic
     steps:

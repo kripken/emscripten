@@ -1730,9 +1730,9 @@ keydown(100);keyup(100); // trigger the end
   @requires_graphics_hardware
   def test_glgears_deriv(self):
     self.btest('hello_world_gles_deriv.c', reference='gears.png', reference_slack=2,
-               args=['-DHAVE_BUILTIN_SINCOS', '-lGL', '-lglut'], outfile='something.html',
+               args=['-DHAVE_BUILTIN_SINCOS', '-lGL', '-lglut'],
                message='You should see animating gears.')
-    with open('something.html') as f:
+    with open('test.html') as f:
       assert 'gl-matrix' not in f.read(), 'Should not include glMatrix when not needed'
 
   @requires_graphics_hardware
@@ -3717,7 +3717,9 @@ window.close = function() {
   # Test that main thread can wait for a pthread to finish via pthread_join().
   @requires_threads
   def test_pthread_join(self):
-    self.btest(path_from_root('tests', 'pthread', 'test_pthread_join.cpp'), expected='6765', args=['-O3', '-s', 'USE_PTHREADS=1', '-s', 'PTHREAD_POOL_SIZE=8'])
+    # EXIT_RUNTIME is needed in order for this test to exit correctly under node.
+    # TODO: Should this be required?
+    self.btest(path_from_root('tests', 'pthread', 'test_pthread_join.cpp'), expected='6765', args=['-O3', '-s', 'USE_PTHREADS=1', '-s', 'PTHREAD_POOL_SIZE=8', '-s', 'EXIT_RUNTIME'])
 
   # Test that threads can rejoin the pool once detached and finished
   @requires_threads
