@@ -8064,7 +8064,7 @@ NODEFS is no longer included by default; build with -lnodefs.js
 
   @node_pthreads
   def test_pthread_create(self):
-    self.do_run_in_out_file_test('tests', 'core', 'pthread', 'create.cpp')
+    self.do_run_in_out_file_test('tests', 'core', 'pthread', 'create.c')
 
   @node_pthreads
   def test_pthread_c11_threads(self):
@@ -8078,21 +8078,23 @@ NODEFS is no longer included by default; build with -lnodefs.js
     # with a pool, we can synchronously depend on workers being available
     self.set_setting('PTHREAD_POOL_SIZE', '2')
     self.emcc_args += ['-DALLOW_SYNC']
-    self.do_run_in_out_file_test('tests', 'core', 'pthread', 'create.cpp')
+    self.do_run_in_out_file_test('tests', 'core', 'pthread', 'create.c')
 
   @node_pthreads
   def test_pthread_create_proxy(self):
     # with PROXY_TO_PTHREAD, we can synchronously depend on workers being available
     self.set_setting('PROXY_TO_PTHREAD', '1')
     self.emcc_args += ['-DALLOW_SYNC']
-    self.do_run_in_out_file_test('tests', 'core', 'pthread', 'create.cpp')
+    self.do_run_in_out_file_test('tests', 'core', 'pthread', 'create.c')
 
   @node_pthreads
-  def test_pthread_create_embind_stack_check(self):
+  def test_pthread_embind_stack_check(self):
     # embind should work with stack overflow checks (see #12356)
     self.set_setting('STACK_OVERFLOW_CHECK', 2)
     self.emcc_args += ['--bind']
-    self.do_run_in_out_file_test('tests', 'core', 'pthread', 'create.cpp')
+    # compile with C++ compiler since bind needs C++ stdlibs.
+    shutil.copyfile(path_from_root('tests', 'core', 'pthread', 'create.c'), 'create.cpp')
+    self.do_runf('create.cpp', 'done!')
 
   @node_pthreads
   def test_pthread_exceptions(self):
@@ -8120,13 +8122,11 @@ NODEFS is no longer included by default; build with -lnodefs.js
   def test_emscripten_atomics_stub(self):
     self.do_run_in_out_file_test('tests', 'core', 'pthread', 'emscripten_atomics.c')
 
-  @no_asan('incompatibility with atomics')
   @node_pthreads
   def test_emscripten_atomics(self):
     self.set_setting('USE_PTHREADS', '1')
     self.do_run_in_out_file_test('tests', 'core', 'pthread', 'emscripten_atomics.c')
 
-  @no_asan('incompatibility with atomics')
   @node_pthreads
   def test_emscripten_futexes(self):
     self.set_setting('USE_PTHREADS', '1')
