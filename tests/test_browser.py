@@ -4292,7 +4292,7 @@ window.close = function() {
   @requires_offscreen_canvas
   def test_webgl_offscreen_canvas_in_proxied_pthread(self):
     for asyncify in [0, 1]:
-      cmd = ['-s', 'USE_PTHREADS=1', '-s', 'OFFSCREENCANVAS_SUPPORT=1', '-lGL', '-s', 'GL_DEBUG=1', '-s', 'PROXY_TO_PTHREAD=1']
+      cmd = ['-s', 'USE_PTHREADS=1', '-s', 'OFFSCREENCANVAS_SUPPORT=1', '-lGL', '-s', 'GL_DEBUG=1', '-s', 'PROXY_TO_PTHREAD=1', '-s', 'USE_GLFW=3']
       if asyncify:
         # given the synchronous render loop here, asyncify is needed to see intermediate frames and
         # the gradual color change
