@@ -113,7 +113,7 @@ var PTHREAD_WORKER_FILE = '';
 // name of the file containing the Wasm Worker *.ww.js, if relevant
 var WASM_WORKER_FILE = '';
 
-// If USE_WASM_WORKERS=2 is used, no separate a.ww.js script will
+// If WASM_WORKERS=2 is used, no separate a.ww.js script will
 // be used to load up the Wasm Worker, but insteas the bootstrap
 // script will be embedded directly into the main .JS file as a Blob
 // URL.

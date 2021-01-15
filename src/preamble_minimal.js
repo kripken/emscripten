@@ -90,7 +90,7 @@ if (!ENVIRONMENT_IS_PTHREAD) {
 #endif
 
 wasmMemory =
-#if USE_WASM_WORKERS
+#if WASM_WORKERS
   Module['mem'] ||
 #endif
   new WebAssembly.Memory({
@@ -98,7 +98,7 @@ wasmMemory =
 #if USE_PTHREADS || !ALLOW_MEMORY_GROWTH || MAXIMUM_MEMORY != -1
   , 'maximum': wasmMaximumMemory
 #endif
-#if USE_PTHREADS || USE_WASM_WORKERS
+#if USE_PTHREADS || WASM_WORKERS
   , 'shared': true
 #endif
   });

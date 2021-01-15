@@ -59,16 +59,16 @@ def generate_minimal_runtime_load_statement(target_basename):
       files_to_load += [download_wasm]
 
   # Download wasm_worker file
-  if shared.Settings.USE_WASM_WORKERS:
+  if shared.Settings.WASM_WORKERS:
     if shared.Settings.MODULARIZE:
-      if shared.Settings.USE_WASM_WORKERS == 1:
+      if shared.Settings.WASM_WORKERS == 1:
         modularize_imports += ['wasmWorker: URL.createObjectURL(new Blob([r[%d]], {type: "application/javascript"}))' % len(files_to_load)]
       modularize_imports += ['js: js']
     else:
-      if shared.Settings.USE_WASM_WORKERS == 1:
+      if shared.Settings.WASM_WORKERS == 1:
         then_statements += ['%s.wasmWorker = URL.createObjectURL(new Blob([r[%d]], {type: "application/javascript"}));' % (shared.Settings.EXPORT_NAME, len(files_to_load))]
 
-    if download_wasm and shared.Settings.USE_WASM_WORKERS == 1:
+    if download_wasm and shared.Settings.WASM_WORKERS == 1:
       files_to_load += ["binary('%s')" % (target_basename + '.ww.js')]
 
   if shared.Settings.MODULARIZE and shared.Settings.USE_PTHREADS:
@@ -85,7 +85,7 @@ def generate_minimal_runtime_load_statement(target_basename):
   # Execute compiled output when building with MODULARIZE
   if shared.Settings.MODULARIZE:
 
-    if shared.Settings.USE_WASM_WORKERS:
+    if shared.Settings.WASM_WORKERS:
       then_statements += ['''// Detour the JS code to a separate variable to avoid instantiating with 'r' array as "this" directly to avoid strict ECMAScript/Firefox GC problems that cause a leak, see https://bugzilla.mozilla.org/show_bug.cgi?id=1540101
   var js = URL.createObjectURL(new Blob([r[0]], {type: "application/javascript"}));\n script(js).then(function(c) { c({ %s }); });''' % ',\n  '.join(modularize_imports)]
     else:
@@ -143,18 +143,18 @@ def generate_minimal_runtime_load_statement(target_basename):
     else:
       return script_xhr + files_to_load[0] + ";"
 
-  if not shared.Settings.MODULARIZE or shared.Settings.USE_WASM_WORKERS:
+  if not shared.Settings.MODULARIZE or shared.Settings.WASM_WORKERS:
     # If downloading multiple files like .wasm or .mem, those need to be loaded in
     # before we can add the main runtime script to the DOM, so convert the main .js
     # script load from direct script() load to a binary() load so we can still
     # immediately start the download, but can control when we add the script to the
     # DOM.
-    if shared.Settings.USE_PTHREADS or shared.Settings.USE_WASM_WORKERS:
+    if shared.Settings.USE_PTHREADS or shared.Settings.WASM_WORKERS:
       script_load = "script(url)"
     else:
       script_load = "script(url).then(() => { URL.revokeObjectURL(url) });"
 
-    if shared.Settings.USE_WASM_WORKERS:
+    if shared.Settings.WASM_WORKERS:
       save_js = '%s.js = ' % shared.Settings.EXPORT_NAME
     else:
       save_js = ''

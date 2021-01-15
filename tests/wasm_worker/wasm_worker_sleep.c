@@ -7,9 +7,11 @@ EM_JS(void, console_log, (char* str), {
 
 void worker_main()
 {
-  console_log("Hello from wasm worker!");
+	double t0 = emscripten_performance_now();
+	emscripten_wasm_worker_sleep(/*msecs=*/1500);
+	double t1 = emscripten_performance_now();
 #ifdef REPORT_RESULT
-  REPORT_RESULT(0);
+  	REPORT_RESULT(t1-t0 >= 1500);
 #endif
 }
 

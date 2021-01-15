@@ -70,7 +70,7 @@ function initRuntime(asm) {
   }
 #endif
 
-#if USE_WASM_WORKERS
+#if WASM_WORKERS
   if (ENVIRONMENT_IS_WASM_WORKER) {
     __wasm_worker_initializeRuntime();
     return;
@@ -229,7 +229,7 @@ WebAssembly.instantiate(Module['wasm'], imports).then(function(output) {
   initRuntime(asm);
 #if USE_PTHREADS && PTHREAD_POOL_SIZE
   if (!ENVIRONMENT_IS_PTHREAD) loadWasmModuleToWorkers();
-#if !PTHREAD_POOL_DELAY_LOAD  
+#if !PTHREAD_POOL_DELAY_LOAD
   else
 #endif
     ready();

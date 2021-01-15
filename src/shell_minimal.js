@@ -44,7 +44,7 @@ var ENVIRONMENT_IS_WEB = !ENVIRONMENT_IS_NODE && !ENVIRONMENT_IS_SHELL;
 #endif
 #endif
 
-#if USE_WASM_WORKERS
+#if WASM_WORKERS
 var ENVIRONMENT_IS_WASM_WORKER = Module['$ww'];
 #endif
 
@@ -116,11 +116,11 @@ function ready() {
 #if USE_PTHREADS
   if (!ENVIRONMENT_IS_PTHREAD) {
 #endif
-#if USE_WASM_WORKERS
+#if WASM_WORKERS
   if (!ENVIRONMENT_IS_WASM_WORKER) {
 #endif
     run();
-#if USE_PTHREADS || USE_WASM_WORKERS
+#if USE_PTHREADS || WASM_WORKERS
   }
 #endif
 #else

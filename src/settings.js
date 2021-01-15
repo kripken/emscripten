@@ -1260,9 +1260,11 @@ var IN_TEST_HARNESS = 0;
 // This setting is equivalent to `-pthread`, which should be preferred.
 var USE_PTHREADS = 0;
 
-// If true, enables support for Wasm Workers.
+// If true, enables support for Wasm Workers. Wasm Workers enable applications
+// to create threads using a lightweight web-specific API that builds on top
+// of Wasm SharedArrayBuffer + Atomics API.
 // [compile+link] - affects user code at compile and system libraries at link.
-var USE_WASM_WORKERS = 0;
+var WASM_WORKERS = 0;
 
 // In web browsers, Workers cannot be created while the main browser thread
 // is executing JS/Wasm code, but the main thread must regularly yield back

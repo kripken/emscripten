@@ -293,13 +293,13 @@ def setup_environment_settings():
   shared.Settings.ENVIRONMENT_MAY_BE_WORKER = \
       not shared.Settings.ENVIRONMENT or \
       'worker' in environments or \
-      shared.Settings.USE_WASM_WORKERS or \
+      shared.Settings.WASM_WORKERS or \
       (shared.Settings.ENVIRONMENT_MAY_BE_NODE and shared.Settings.USE_PTHREADS)
 
   if not shared.Settings.ENVIRONMENT_MAY_BE_WORKER and shared.Settings.PROXY_TO_WORKER:
     exit_with_error('If you specify --proxy-to-worker and specify a "-s ENVIRONMENT=" directive, it must include "worker" as a target! (Try e.g. -s ENVIRONMENT=web,worker)')
 
-  if not shared.Settings.ENVIRONMENT_MAY_BE_WORKER and (shared.Settings.USE_PTHREADS or shared.Settings.USE_WASM_WORKERS):
+  if not shared.Settings.ENVIRONMENT_MAY_BE_WORKER and (shared.Settings.USE_PTHREADS or shared.Settings.WASM_WORKERS):
     exit_with_error('When building with multithreading enabled and a "-s ENVIRONMENT=" directive is specified, it must include "worker" as a target! (Try e.g. -s ENVIRONMENT=web,worker)')
 
 
@@ -677,7 +677,7 @@ def calc_cflags(options):
   if shared.Settings.USE_PTHREADS:
     cflags.append('-D__EMSCRIPTEN_PTHREADS__=1')
 
-  if shared.Settings.USE_PTHREADS or shared.Settings.USE_WASM_WORKERS:
+  if shared.Settings.USE_PTHREADS or shared.Settings.WASM_WORKERS:
     cflags.append('-D__EMSCRIPTEN_SHARED_MEMORY__=1')
 
   if not shared.Settings.STRICT:
@@ -1507,7 +1507,7 @@ There is NO warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR P
       # overrides that.
       default_setting('ABORTING_MALLOC', 0)
 
-    if shared.Settings.USE_PTHREADS or shared.Settings.USE_WASM_WORKERS:
+    if shared.Settings.USE_PTHREADS or shared.Settings.WASM_WORKERS:
       # UTF8Decoder.decode doesn't work with a view of a SharedArrayBuffer
       shared.Settings.TEXTDECODER = 0
 
@@ -1556,11 +1556,11 @@ There is NO warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR P
     else:
       shared.Settings.SYSTEM_JS_LIBRARIES.append((0, shared.path_from_root('src', 'library_pthread_stub.js')))
 
-    if shared.Settings.USE_WASM_WORKERS:
+    if shared.Settings.WASM_WORKERS:
       shared.Settings.EXPORTED_FUNCTIONS += ['_emscripten_stack_set_limits']
       shared.Settings.DEFAULT_LIBRARY_FUNCS_TO_INCLUDE += ['_wasm_worker_initializeRuntime']
       # set location of Wasm Worker bootstrap .js
-      if shared.Settings.USE_WASM_WORKERS == 1:
+      if shared.Settings.WASM_WORKERS == 1:
         shared.Settings.WASM_WORKER_FILE = unsuffixed(os.path.basename(target)) + '.ww.js'
       shared.Settings.SYSTEM_JS_LIBRARIES.append((0, shared.path_from_root('src', 'library_wasm_worker.js')))
 
@@ -1638,19 +1638,19 @@ There is NO warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR P
       if shared.Settings.PROXY_TO_PTHREAD:
         exit_with_error('-s PROXY_TO_PTHREAD=1 requires -s USE_PTHREADS to work!')
 
-    if shared.Settings.USE_WASM_WORKERS:
+    if shared.Settings.WASM_WORKERS:
       if shared.Settings.SINGLE_FILE:
-        exit_with_error('-s SINGLE_FILE=1 is not supported with -s USE_WASM_WORKERS!')
+        exit_with_error('-s SINGLE_FILE=1 is not supported with -s WASM_WORKERS!')
       if shared.Settings.LINKABLE:
-        exit_with_error('-s LINKABLE=1 is not supported with -s USE_WASM_WORKERS!')
+        exit_with_error('-s LINKABLE=1 is not supported with -s WASM_WORKERS!')
       if shared.Settings.SIDE_MODULE:
-        exit_with_error('-s SIDE_MODULE=1 is not supported with -s USE_WASM_WORKERS!')
+        exit_with_error('-s SIDE_MODULE=1 is not supported with -s WASM_WORKERS!')
       if shared.Settings.MAIN_MODULE:
-        exit_with_error('-s MAIN_MODULE=1 is not supported with -s USE_WASM_WORKERS!')
+        exit_with_error('-s MAIN_MODULE=1 is not supported with -s WASM_WORKERS!')
       if shared.Settings.PROXY_TO_WORKER:
-        exit_with_error('--proxy-to-worker is not supported with -s USE_WASM_WORKERS!')
+        exit_with_error('--proxy-to-worker is not supported with -s WASM_WORKERS!')
       if shared.Settings.USE_PTHREADS:
-        exit_with_error('-pthread and -s USE_PTHREADS=1 are not supported with -s USE_WASM_WORKERS!')
+        exit_with_error('-pthread and -s USE_PTHREADS=1 are not supported with -s WASM_WORKERS!')
 
     if shared.Settings.INITIAL_MEMORY % 65536 != 0:
       exit_with_error('For wasm, INITIAL_MEMORY must be a multiple of 64KB, was ' + str(shared.Settings.INITIAL_MEMORY))
@@ -1662,7 +1662,7 @@ There is NO warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR P
       exit_with_error('MAXIMUM_MEMORY must be a multiple of 64KB, was ' + str(shared.Settings.MAXIMUM_MEMORY))
     if shared.Settings.MEMORY_GROWTH_LINEAR_STEP != -1 and shared.Settings.MEMORY_GROWTH_LINEAR_STEP % 65536 != 0:
       exit_with_error('MEMORY_GROWTH_LINEAR_STEP must be a multiple of 64KB, was ' + str(shared.Settings.MEMORY_GROWTH_LINEAR_STEP))
-    if (shared.Settings.USE_PTHREADS or shared.Settings.USE_WASM_WORKERS) and shared.Settings.ALLOW_MEMORY_GROWTH and shared.Settings.MAXIMUM_MEMORY == -1:
+    if (shared.Settings.USE_PTHREADS or shared.Settings.WASM_WORKERS) and shared.Settings.ALLOW_MEMORY_GROWTH and shared.Settings.MAXIMUM_MEMORY == -1:
       exit_with_error('If building with shared memory and memory growth are enabled, MAXIMUM_MEMORY must be set')
 
     if shared.Settings.EXPORT_ES6 and not shared.Settings.MODULARIZE:
@@ -1722,7 +1722,7 @@ There is NO warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR P
     if shared.Settings.STANDALONE_WASM:
       if shared.Settings.USE_PTHREADS:
         exit_with_error('STANDALONE_WASM does not support pthreads yet')
-      if shared.Settings.USE_WASM_WORKERS:
+      if shared.Settings.WASM_WORKERS:
         exit_with_error('STANDALONE_WASM does not support Wasm Workers yet')
       if shared.Settings.MINIMAL_RUNTIME:
         exit_with_error('MINIMAL_RUNTIME reduces JS size, and is incompatible with STANDALONE_WASM which focuses on ignoring JS anyhow and being 100% wasm')
@@ -1731,7 +1731,7 @@ There is NO warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR P
       shared.Settings.LEGALIZE_JS_FFI = 0
 
     # TODO(sbc): Remove WASM2JS here once the size regression it would introduce has been fixed.
-    if shared.Settings.USE_PTHREADS or shared.Settings.RELOCATABLE or shared.Settings.ASYNCIFY_LAZY_LOAD_CODE or shared.Settings.WASM2JS:
+    if shared.Settings.USE_PTHREADS or shared.Settings.RELOCATABLE or shared.Settings.ASYNCIFY_LAZY_LOAD_CODE or shared.Settings.WASM2JS or shared.Settings.WASM_WORKERS:
       shared.Settings.IMPORTED_MEMORY = 1
 
     if shared.Settings.WASM_BIGINT:
@@ -1914,7 +1914,7 @@ There is NO warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR P
                                              '_emscripten_stack_get_base',
                                              '_emscripten_stack_get_end']
 
-    if shared.Settings.USE_WASM_WORKERS:
+    if shared.Settings.WASM_WORKERS:
       newargs.append('-pthread')
 
     # Any "pointers" passed to JS will now be i64's, in both modes.
@@ -2318,7 +2318,7 @@ def post_link(options, in_wasm, wasm_target, target):
         minified_worker = building.acorn_optimizer(worker_output, ['minifyWhitespace'], return_output=True)
         open(worker_output, 'w').write(minified_worker)
 
-    if shared.Settings.USE_WASM_WORKERS == 1:
+    if shared.Settings.WASM_WORKERS == 1:
       worker_output = os.path.join(target_dir, shared.Settings.WASM_WORKER_FILE)
       with open(worker_output, 'w') as f:
         f.write(shared.read_and_preprocess(shared.path_from_root('src', 'wasm_worker.js'), expand_macros=True))

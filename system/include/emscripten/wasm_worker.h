@@ -1,7 +1,7 @@
 #pragma once
 
 #ifdef __EMSCRIPTEN_PTHREADS__
-#error Emscripten Wasm Workers API is not available when building with -pthread (-s USE_PTHREADS=1). Compile instead with -s USE_WASM_WORKERS=1!
+#error Emscripten Wasm Workers API is not available when building with -pthread (-s USE_PTHREADS=1). Compile instead with -s WASM_WORKERS=1!
 #endif
 
 #include <stdint.h>
@@ -14,13 +14,13 @@ extern "C" {
 #define emscripten_wasm_worker_t int
 #define EMSCRIPTEN_WASM_WORKER_ID_PARENT 0
 
-// If not building with Wasm workers enabled (-s USE_WASM_WORKERS=0), returns 0.
+// If not building with Wasm workers enabled (-s WASM_WORKERS=0), returns 0.
 emscripten_wasm_worker_t emscripten_create_wasm_worker(void *stackLowestAddress, uint32_t stackSize);
 
-// Exists, but is a no-op if not building with Wasm Workers enabled (-s USE_WASM_WORKERS=0)
+// Exists, but is a no-op if not building with Wasm Workers enabled (-s WASM_WORKERS=0)
 void emscripten_terminate_wasm_worker(emscripten_wasm_worker_t id);
 
-// Exists, but is a no-op if not building with Wasm Workers enabled (-s USE_WASM_WORKERS=0)
+// Exists, but is a no-op if not building with Wasm Workers enabled (-s WASM_WORKERS=0)
 void emscripten_terminate_all_wasm_workers(void);
 
 // Returns EM_TRUE if the current thread is executing a Wasm Worker, EM_FALSE otherwise.
@@ -32,7 +32,7 @@ EM_BOOL emscripten_current_thread_is_wasm_worker(void);
 // Note that if the Wasm Worker runs in an infinite loop, it will not process the postMessage
 // queue to dispatch the function call, until the infinite loop is broken and execution is returned
 // back to the Worker event loop.
-// Exists, but is a no-op if not building with Wasm Workers enabled (-s USE_WASM_WORKERS=0)
+// Exists, but is a no-op if not building with Wasm Workers enabled (-s WASM_WORKERS=0)
 void emscripten_wasm_worker_post_function_v(emscripten_wasm_worker_t id, void (*funcPtr)(void));
 void emscripten_wasm_worker_post_function_vi(emscripten_wasm_worker_t id, void (*funcPtr)(int), int arg0);
 void emscripten_wasm_worker_post_function_vii(emscripten_wasm_worker_t id, void (*funcPtr)(int, int), int arg0, int arg1);
@@ -78,8 +78,13 @@ ATOMICS_WAIT_RESULT_T emscripten_atomic_async_wait(volatile void *addr,
                                                     void *userData,
                                                     double maxWaitMilliseconds);
 
+// Sleeps the calling wasm worker for the given msecs. Calling this function on the main thread
+// either results in a TypeError exception (Firefox), or a silent return without waiting (Chrome),
+// see https://github.com/WebAssembly/threads/issues/174
 void emscripten_wasm_worker_sleep(double msecs);
 
+// Returns the value of navigator.hardwareConcurrency, i.e. the number of logical threads available for
+// the user agent.
 int emscripten_navigator_hardware_concurrency(void);
 
 // Returns true if the given memory access width can be accessed atomically. Generally will return true

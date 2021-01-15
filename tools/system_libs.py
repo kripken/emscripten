@@ -531,7 +531,7 @@ class MTLibrary(Library):
     if self.is_mt:
       cflags += ['-s', 'USE_PTHREADS=1', '-DUSE_THREADS']
     if self.is_ww:
-      cflags += ['-s', 'USE_WASM_WORKERS=1']
+      cflags += ['-s', 'WASM_WORKERS=1']
     return cflags
 
   def get_base_name(self):
@@ -548,7 +548,7 @@ class MTLibrary(Library):
 
   @classmethod
   def get_default_variation(cls, **kwargs):
-    return super(MTLibrary, cls).get_default_variation(is_mt=shared.Settings.USE_PTHREADS, is_ww=shared.Settings.USE_WASM_WORKERS, **kwargs)
+    return super(MTLibrary, cls).get_default_variation(is_mt=shared.Settings.USE_PTHREADS, is_ww=shared.Settings.WASM_WORKERS, **kwargs)
 
 
 class exceptions(object):
@@ -778,7 +778,14 @@ class libc(AsanInstrumentedLibrary, MuslInternalLibrary, MTLibrary):
           'call_once.c',
         ])
 
-    if self.is_mt:
+    if self.is_ww:
+      libc_files += files_in_path(
+        path_components=['system', 'lib', 'wasm_worker'],
+        filenames=['library_wasm_worker.c'])
+      libc_files += files_in_path(
+        path_components=['system', 'lib', 'pthread'],
+        filenames=['emscripten_atomic.c'])
+    elif self.is_mt:
       libc_files += files_in_path(
         path_components=['system', 'lib', 'libc', 'musl', 'src', 'thread'],
         filenames=[
