@@ -84,7 +84,9 @@ ATOMICS_WAIT_RESULT_T emscripten_atomic_async_wait(volatile void *addr,
 void emscripten_wasm_worker_sleep(double msecs);
 
 // Returns the value of navigator.hardwareConcurrency, i.e. the number of logical threads available for
-// the user agent.
+// the user agent. NOTE: If the execution environment does not support navigator.hardwareConcurrency,
+// this function will return zero to signal no support. (If the value 1 is returned, then it means that
+// navigator.hardwareConcurrency is supported, but there is only one logical thread of concurrency available)
 int emscripten_navigator_hardware_concurrency(void);
 
 // Returns true if the given memory access width can be accessed atomically. Generally will return true
