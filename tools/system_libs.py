@@ -550,6 +550,12 @@ class MTLibrary(Library):
   def get_default_variation(cls, **kwargs):
     return super(MTLibrary, cls).get_default_variation(is_mt=shared.Settings.USE_PTHREADS, is_ww=shared.Settings.WASM_WORKERS, **kwargs)
 
+  @classmethod
+  def variations(cls):
+    combos = super(MTLibrary, cls).variations()
+    # pthreads and Wasm workers are currently not supported together.
+    return [combo for combo in combos if not combo['is_mt'] or not combo['is_ww']]
+
 
 class exceptions(object):
   """
