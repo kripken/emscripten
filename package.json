@@ -7,7 +7,6 @@
   "dependencies": {
     "acorn": "7.3.1",
     "google-closure-compiler": "20200920.0.0",
-    "google-closure-compiler-windows": "^20201102.0.1",
     "html-minifier-terser": "5.0.2",
     "source-map": "0.5.6",
     "wasm2c": "1.0.0"
