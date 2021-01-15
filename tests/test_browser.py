@@ -4878,28 +4878,34 @@ window.close = function() {
                expected='5121',
                args=['-s', 'AUTO_JS_LIBRARIES=0', '-lwebgl.js', '--js-library', path_from_root('tests', 'test_override_system_js_lib_symbol.js')])
 
-  # Tests smallest code example creating a Wasm Worker
+  # Tests emscripten_create_wasm_worker() and emscripten_current_thread_is_wasm_worker() functions
   def test_hello_wasm_worker(self):
     self.btest(path_from_root('tests', 'wasm_worker', 'hello_wasm_worker.c'),
                expected='0',
                args=['-s', 'WASM_WORKERS=1', '-s', 'MINIMAL_RUNTIME=1'])
 
-  # Tests Wasm Worker sleep API
+  # Tests emscripten_wasm_worker_sleep()
   def test_wasm_worker_sleep(self):
     self.btest(path_from_root('tests', 'wasm_worker', 'wasm_worker_sleep.c'),
                expected='0',
                args=['-s', 'WASM_WORKERS=1', '-s', 'MINIMAL_RUNTIME=1'])
 
-  # Tests Wasm Worker termination API
+  # Tests emscripten_terminate_wasm_worker()
   def test_wasm_worker_terminate(self):
     self.btest(path_from_root('tests', 'wasm_worker', 'terminate_wasm_worker.c'),
                expected='0',
                args=['-s', 'WASM_WORKERS=1', '-s', 'MINIMAL_RUNTIME=1'])
 
-  # Tests Wasm Worker termination API
+  # Tests emscripten_terminate_all_wasm_workers()
   def test_wasm_worker_terminate_all(self):
     self.btest(path_from_root('tests', 'wasm_worker', 'terminate_all_wasm_workers.c'),
                expected='0',
+               args=['-s', 'WASM_WORKERS=1', '-s', 'MINIMAL_RUNTIME=1'])
+
+  # Tests emscripten_wasm_worker_post_function_*() API
+  def test_wasm_worker_post_function(self):
+    self.btest(path_from_root('tests', 'wasm_worker', 'post_function.c'),
+               expected='8',
                args=['-s', 'WASM_WORKERS=1', '-s', 'MINIMAL_RUNTIME=1'])
 
   @no_firefox('no 4GB support yet')

@@ -166,7 +166,7 @@ mergeInto(LibraryManager.library, {
     assert(id >= 0);
     assert(funcPtr);
     assert(sigPtr);
-    assert(UTF8ToString(sigPtr)[0] == 'v'); // User must remember to specify the return value as void.
+    assert(UTF8ToString(sigPtr)[0] != 'v', 'Do NOT specify the return argument in the signature string for a call to emscripten_wasm_worker_post_function_sig(), it is always discarded.');
     assert(varargs);
 #endif
     var worker = _wasm_workers[id];
