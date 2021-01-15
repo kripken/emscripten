@@ -52,14 +52,14 @@ void emscripten_wasm_worker_post_function_sig(emscripten_wasm_worker_t id, void 
 // If the given memory address contains value 'expectedValue', puts the calling
 // thread to sleep to wait for that address to be notified.
 // Returns one of the ATOMICS_WAIT_* return codes.
-static inline __attribute__((always_inline)) ATOMICS_WAIT_RESULT_T emscripten_atomic_wait_i32(int32_t *addr, int expectedValue, int64_t maxWaitMilliseconds)
+static inline __attribute__((always_inline)) ATOMICS_WAIT_RESULT_T emscripten_atomic_wait_i32(int32_t *addr, int expectedValue, int64_t maxWaitNanoseconds)
 {
-	return __builtin_wasm_memory_atomic_wait32(addr, expectedValue, maxWaitMilliseconds);
+	return __builtin_wasm_memory_atomic_wait32(addr, expectedValue, maxWaitNanoseconds);
 }
 
-static inline __attribute__((always_inline)) ATOMICS_WAIT_RESULT_T emscripten_atomic_wait_i64(int64_t *addr, int64_t expectedValue, int64_t maxWaitMilliseconds)
+static inline __attribute__((always_inline)) ATOMICS_WAIT_RESULT_T emscripten_atomic_wait_i64(int64_t *addr, int64_t expectedValue, int64_t maxWaitNanoseconds)
 {
-	return __builtin_wasm_memory_atomic_wait64(addr, expectedValue, maxWaitMilliseconds);
+	return __builtin_wasm_memory_atomic_wait64(addr, expectedValue, maxWaitNanoseconds);
 }
 
 #define EMSCRIPTEN_NOTIFY_ALL_WAITERS (-1LL)
@@ -76,12 +76,12 @@ ATOMICS_WAIT_RESULT_T emscripten_atomic_async_wait(volatile void *addr,
                                                     uint32_t val,
                                                     void (*asyncWaitFinished)(volatile void *addr, uint32_t val, ATOMICS_WAIT_RESULT_T waitResult, void *userData),
                                                     void *userData,
-                                                    double maxWaitMilliseconds);
+                                                    int64_t maxWaitNanoseconds);
 
-// Sleeps the calling wasm worker for the given msecs. Calling this function on the main thread
+// Sleeps the calling wasm worker for the given nanoseconds. Calling this function on the main thread
 // either results in a TypeError exception (Firefox), or a silent return without waiting (Chrome),
 // see https://github.com/WebAssembly/threads/issues/174
-void emscripten_wasm_worker_sleep(double msecs);
+void emscripten_wasm_worker_sleep(int64_t nanoseconds);
 
 // Returns the value of navigator.hardwareConcurrency, i.e. the number of logical threads available for
 // the user agent. NOTE: If the execution environment does not support navigator.hardwareConcurrency,
@@ -104,14 +104,14 @@ void emscripten_lock_init(emscripten_lock_t *lock);
 
 // Returns true if the lock was successfully acquired. False on timeout.
 // Can be only called in a Worker, not on the main browser thread.
-EM_BOOL emscripten_lock_wait_acquire(emscripten_lock_t *lock, double maxWaitMilliseconds);
+EM_BOOL emscripten_lock_wait_acquire(emscripten_lock_t *lock, int64_t maxWaitNanoseconds);
 void emscripten_lock_waitinf_acquire(emscripten_lock_t *lock);
 
 // main thread + worker, raise an event when the lock is acquired. If you use this API in Worker, you cannot run an infinite loop.
 ATOMICS_WAIT_RESULT_T emscripten_lock_async_acquire(emscripten_lock_t *lock,
                                                     void (*asyncWaitFinished)(volatile void *addr, uint32_t val, ATOMICS_WAIT_RESULT_T waitResult, void *userData),
                                                     void *userData,
-                                                    double maxWaitMilliseconds);
+                                                    int64_t maxWaitNanoseconds);
 
 // Can be called on both main thread and in Workers.
 EM_BOOL emscripten_lock_try_acquire(emscripten_lock_t *lock);
@@ -134,10 +134,10 @@ void emscripten_semaphore_async_acquire(emscripten_semaphore_t *sem,
                                         int num,
                                         void (*asyncWaitFinished)(volatile void *addr, uint32_t idx, ATOMICS_WAIT_RESULT_T result, void *userData),
                                         void *userData,
-                                        double maxWaitMilliseconds);
+                                        int64_t maxWaitNanoseconds);
 
 // worker, sleep to acquire num instances. Returns idx that was acquired, or -1 if timed out unable to acquire.
-int emscripten_semaphore_wait_acquire(emscripten_semaphore_t *sem, int num, double maxWaitMilliseconds);
+int emscripten_semaphore_wait_acquire(emscripten_semaphore_t *sem, int num, int64_t maxWaitNanoseconds);
 
 // worker, sleep infinitely long to acquire num instances. Returns idx that was acquired, or -1 if timed out unable to acquire.
 int emscripten_semaphore_waitinf_acquire(emscripten_semaphore_t *sem, int num);
@@ -163,8 +163,8 @@ void emscripten_condvar_init(emscripten_condvar_t *condvar);
 void emscripten_condvar_waitinf(emscripten_condvar_t *condvar, emscripten_lock_t *lock);
 
 // TODO:
-//void emscripten_condvar_wait(emscripten_condvar_t *condvar, emscripten_lock_t *lock, double maxWaitMilliseconds);
-//void emscripten_condvar_wait_async(emscripten_condvar_t *condvar, emscripten_lock_t *lock, double maxWaitMilliseconds);
+//void emscripten_condvar_wait(emscripten_condvar_t *condvar, emscripten_lock_t *lock, int64_t maxWaitNanoseconds);
+//void emscripten_condvar_wait_async(emscripten_condvar_t *condvar, emscripten_lock_t *lock, int64_t maxWaitNanoseconds);
 
 // Pass numWaitersToSignal == EMSCRIPTEN_NOTIFY_ALL_WAITERS to wake all waiters ("broadcast").
 void emscripten_condvar_signal(emscripten_condvar_t *condvar, int64_t numWaitersToSignal);

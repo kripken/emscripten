@@ -4887,7 +4887,7 @@ window.close = function() {
   # Tests emscripten_wasm_worker_sleep()
   def test_wasm_worker_sleep(self):
     self.btest(path_from_root('tests', 'wasm_worker', 'wasm_worker_sleep.c'),
-               expected='0',
+               expected='1',
                args=['-s', 'WASM_WORKERS=1', '-s', 'MINIMAL_RUNTIME=1'])
 
   # Tests emscripten_terminate_wasm_worker()
@@ -4911,6 +4911,24 @@ window.close = function() {
   # Tests emscripten_navigator_hardware_concurrency() and emscripten_atomics_is_lock_free()
   def test_wasm_worker_hardware_concurrency_is_lock_free(self):
     self.btest(path_from_root('tests', 'wasm_worker', 'hardware_concurrency_is_lock_free.c'),
+               expected='0',
+               args=['-s', 'WASM_WORKERS=1', '-s', 'MINIMAL_RUNTIME=1'])
+
+  # Tests emscripten_lock_init(), emscripten_lock_waitinf_acquire() and emscripten_lock_release()
+  def test_wasm_worker_lock_waitinf(self):
+    self.btest(path_from_root('tests', 'wasm_worker', 'lock_waitinf_acquire.c'),
+               expected='10001',
+               args=['-s', 'WASM_WORKERS=1', '-s', 'MINIMAL_RUNTIME=1'])
+
+  # Tests emscripten_lock_wait_acquire() and emscripten_lock_try_acquire() in Worker.
+  def test_wasm_worker_lock_wait(self):
+    self.btest(path_from_root('tests', 'wasm_worker', 'lock_wait_acquire.c'),
+               expected='0',
+               args=['-s', 'WASM_WORKERS=1', '-s', 'MINIMAL_RUNTIME=1'])
+
+  # Tests emscripten_lock_wait_acquire() between two Wasm Workers.
+  def test_wasm_worker_lock_wait2(self):
+    self.btest(path_from_root('tests', 'wasm_worker', 'lock_wait_acquire2.c'),
                expected='0',
                args=['-s', 'WASM_WORKERS=1', '-s', 'MINIMAL_RUNTIME=1'])
 

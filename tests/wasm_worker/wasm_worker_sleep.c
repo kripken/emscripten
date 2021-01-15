@@ -8,7 +8,7 @@ EM_JS(void, console_log, (char* str), {
 void worker_main()
 {
 	double t0 = emscripten_performance_now();
-	emscripten_wasm_worker_sleep(/*msecs=*/1500);
+	emscripten_wasm_worker_sleep(/*nsecs=*/1500*1000000);
 	double t1 = emscripten_performance_now();
 #ifdef REPORT_RESULT
   	REPORT_RESULT(t1-t0 >= 1500);
