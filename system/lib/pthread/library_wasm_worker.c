@@ -1,6 +1,8 @@
 #include <emscripten/wasm_worker.h>
 #include <emscripten/threading.h>
 
+// Internal implementation function in JavaScript side that emscripten_create_wasm_worker() calls to
+// to perform the wasm worker creation.
 emscripten_wasm_worker_t _emscripten_create_wasm_worker(void *stackLowestAddress, uint32_t stackSize);
 
 emscripten_wasm_worker_t emscripten_create_wasm_worker(void *stackLowestAddress, uint32_t stackSize)
