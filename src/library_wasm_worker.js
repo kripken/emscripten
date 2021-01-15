@@ -97,8 +97,8 @@ mergeInto(LibraryManager.library, {
     }
   },
   emscripten_terminate_all_wasm_workers: function() {
-    _wasm_workers.forEach((worker) => {
-      worker.terminate();
+    Object.keys(_wasm_workers).forEach((worker) => {
+      _wasm_workers[worker].terminate();
     });
     _wasm_workers = {};
   },
