@@ -59,11 +59,8 @@ void vddd(double i, double j, double k)
 {
   console_log("vddd");
   assert(i == 4.5);
-  console_log("viiiiiidddddd");
   assert(j == 5.5);
-  console_log("viiiiiidddddd");
   assert(k == 6.5);
-  console_log("viiiiiidddddd");
   ++success;
 }
 
@@ -71,29 +68,17 @@ void viiiiiidddddd(int a, int b, int c, int d, int e, int f, double g, double h,
 {
   console_log("viiiiiidddddd");
   assert(a == 10);
-  console_log("viiiiiidddddd");
   assert(b == 11);
-  console_log("viiiiiidddddd");
   assert(c == 12);
-  console_log("viiiiiidddddd");
   assert(d == 13);
-  console_log("viiiiiidddddd");
   assert(e == 14);
-  console_log("viiiiiidddddd");
   assert(f == 15);
-  console_log("viiiiiidddddd");
   assert(g == 16.5);
-  console_log("viiiiiidddddd");
   assert(h == 17.5);
-  console_log("viiiiiidddddd");
   assert(i == 18.5);
-  console_log("viiiiiidddddd");
   assert(j == 19.5);
-  console_log("viiiiiidddddd");
   assert(k == 20.5);
-  console_log("viiiiiidddddd");
   assert(l == 21.5);
-  console_log("viiiiiidddddd");
   ++success;
 }
 
