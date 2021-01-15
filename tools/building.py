@@ -28,7 +28,7 @@ from .shared import LLVM_LINK, LLVM_OBJCOPY
 from .shared import try_delete, run_process, check_call, exit_with_error
 from .shared import configuration, path_from_root, EXPECTED_BINARYEN_VERSION
 from .shared import asmjs_mangle, DEBUG
-from .shared import EM_BUILD_VERBOSE, TEMP_DIR, print_compiler_stage
+from .shared import EM_BUILD_VERBOSE, TEMP_DIR
 from .shared import CANONICAL_TEMP_DIR, LLVM_DWARFDUMP, demangle_c_symbol_name, asbytes
 from .shared import get_emscripten_temp_dir, exe_suffix, is_c_symbol
 from .utils import which, WINDOWS
@@ -464,7 +464,6 @@ def link_llvm(linker_inputs, target):
   # runs llvm-link to link things.
   cmd = [LLVM_LINK] + linker_inputs + ['-o', target]
   cmd = get_command_with_possible_response_file(cmd)
-  print_compiler_stage(cmd)
   check_call(cmd)
 
 
@@ -478,10 +477,7 @@ def lld_flags_for_executable(external_symbol_list):
   else:
     cmd.append('--allow-undefined')
 
-  # wasi does not import the memory (but for JS it is efficient to do so,
-  # as it allows us to set up memory, preload files, etc. even before the
-  # wasm module arrives)
-  if not Settings.STANDALONE_WASM:
+  if Settings.IMPORTED_MEMORY:
     cmd.append('--import-memory')
 
   if Settings.USE_PTHREADS or Settings.USE_WASM_WORKERS:
@@ -580,7 +576,6 @@ def link_lld(args, target, external_symbol_list=None):
   if '--relocatable' not in args and '-r' not in args:
     cmd += lld_flags_for_executable(external_symbol_list)
 
-  print_compiler_stage(cmd)
   cmd = get_command_with_possible_response_file(cmd)
   check_call(cmd)
 
@@ -898,7 +893,6 @@ def eval_ctors(js_file, binary_file, debug_info=False): # noqa
   # cmd = [PYTHON, path_from_root('tools', 'ctor_evaller.py'), js_file, binary_file, str(Settings.INITIAL_MEMORY), str(Settings.TOTAL_STACK), str(Settings.GLOBAL_BASE), binaryen_bin, str(int(debug_info))]
   # if binaryen_bin:
   #   cmd += get_binaryen_feature_flags()
-  # print_compiler_stage(cmd)
   # check_call(cmd)
 
 
@@ -1144,7 +1138,7 @@ def metadce(js_file, wasm_file, minify_whitespace, debug_info):
       if export in user_requested_exports or Settings.EXPORT_ALL:
         item['root'] = True
   # in standalone wasm, always export the memory
-  if Settings.STANDALONE_WASM:
+  if not Settings.IMPORTED_MEMORY:
     graph.append({
       'export': 'memory',
       'name': 'emcc$export$memory',
@@ -1355,7 +1349,7 @@ def strip(infile, outfile, debug=False, producers=False):
     cmd += ['--remove-section=.debug*']
   if producers:
     cmd += ['--remove-section=producers']
-  run_process(cmd)
+  check_call(cmd)
 
 
 # extract the DWARF info from the main file, and leave the wasm with
@@ -1623,7 +1617,6 @@ def run_binaryen_command(tool, infile, outfile=None, args=[], debug=False, stdou
   # if the features are not already handled, handle them
   if '--detect-features' not in cmd:
     cmd += get_binaryen_feature_flags()
-  print_compiler_stage(cmd)
   # if we are emitting a source map, every time we load and save the wasm
   # we must tell binaryen to update it
   if Settings.GENERATE_SOURCE_MAP and outfile:

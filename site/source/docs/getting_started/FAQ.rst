@@ -17,9 +17,13 @@ Why do I get multiple errors building basic code and the tests?
 
 All the tests in the :ref:`Emscripten test suite <emscripten-test-suite>` are known to build and pass on our test infrastructure, so if you see failures locally it is likely that there is some problem with your environment. (Rarely, there may be temporary breakage, but never on a tagged release version.)
 
-First call ``emcc -v``, which runs basic sanity checks and prints out useful environment information. If that doesn't help, follow the instructions in :ref:`verifying-the-emscripten-environment`.
+First call ``emcc --check``, which runs basic sanity checks and prints out useful environment information. If that doesn't help, follow the instructions in :ref:`verifying-the-emscripten-environment`.
 
 You might also want to go through the :ref:`Tutorial` again, as it is updated as Emscripten changes.
+
+Also make sure that you have the necessary requirements for running Emscripten
+as specified in the :ref:`SDK <sdk-download-and-install>` section, including new-enough versions of
+the dependencies.
 
 
 I tried something: why doesn’t it work?
@@ -36,7 +40,6 @@ Do I need to change my build system to use Emscripten?
 ======================================================
 
 In most cases you will be able to use your project's current build system with Emscripten. See :ref:`Building-Projects`.
-
 
 
 Why is code compilation slow?
@@ -95,6 +98,10 @@ to use a local webserver. For example, Python has one built in,
 ``python -m http.server`` in Python 3 or ``python -m SimpleHTTPServer``
 in Python 2. After doing that, you can visit ``http://localhost:8000/``.
 
+When doing quick local testing, another option than a local webserver is to
+bundle everything into a single file, using ``-s SINGLE_FILE`` (as then no XHRs
+will be made to ``file://`` URLs).
+
 Otherwise, to debug this, look for an error reported on the page itself, or in the browser devtools (web console and network tab), or in your webserver's logging.
 
 
@@ -110,6 +117,7 @@ only matter if you need to target legacy browsers.
 ``-s WASM=0`` output should run exactly the same as a WebAssembly build, but may
 be larger, start up slower, and run slower, so it's better to ship WebAssembly
 whenever you can.
+
 
 Why do I get ``machine type must be wasm32`` or ``is not a valid input file`` during linking?
 =============================================================================================
@@ -129,6 +137,7 @@ they actually contain. Common issues are:
   code. To fix that, use emconfigure/emmake, see :ref:`Building-Projects`. In
   this case ``emcc.py`` will show that second error,
   "is not a valid input file".
+
 
 Why does my code fail to compile with an error message about inline assembly (or ``{"text":"asm"}``)?
 =====================================================================================================
@@ -169,7 +178,6 @@ To run a C function repeatedly, use :c:func:`emscripten_set_main_loop` (this is 
 To respond to browser events use the SDL API in the normal way. There are examples in the SDL tests (search for SDL in **tests/runner.py**).
 
 See also: :ref:`faq-my-html-app-hangs`
-
 
 
 Why doesn't my SDL app work?
@@ -337,7 +345,6 @@ Another possible cause of missing code is improper linking of ``.a`` files. The 
 .. tip:: It can be useful to compile with ``EMCC_DEBUG=1`` set for the environment (``EMCC_DEBUG=1 emcc ...`` on Linux, ``set EMMCC_DEBUG=1`` on Windows). This splits up the compilation steps and saves them in ``/tmp/emscripten_temp``. You can then see at what stage the code vanishes (you will need to do ``llvm-dis`` on the bitcode  stages to read them, or ``llvm-nm``, etc.).
 
 
-
 Why is the File System API is not available when I build with closure?
 ======================================================================
 
@@ -475,25 +482,23 @@ name (``emcc`` knows that the argument to ``EXPORTED_FUNCTIONS`` is a list of
 strings, so it accepts ``[a]`` or ``[a,b]`` etc.).
 
 
-Why do I get an odd python error complaining about libcxx.bc or libcxxabi.bc?
-=============================================================================
+Why do I get a Python ``SyntaxError: invalid syntax`` on ``file=..`` or on a string starting with ``f'..'``?
+============================================================================================================ 
 
-A possible cause is that building *libcxx* or *libcxxabi* failed. Go to **system/lib/libcxx** (or libcxxabi) and do ``emmake make`` to see the actual error. Or, clean the Emscripten cache (``./emcc --clear-cache``) and then compile your file with ``EMCC_DEBUG=1`` in the environment. *libcxx* will then be built in **/tmp/emscripten_temp/libcxx**, and you can see ``configure*, make*`` files that are the output of configure and make, etc.
+Emscripten requires a recent-enough version of Python. An older Python version,
+like ``2.*``, will not support the print statement by default, so it will error on
+syntax like ``print('..', file=..)``. And an older ``3.*`` Python may not support
+f-strings, which look like ``f'..'``.
 
-Another possible cause of this error is the lack of ``make``, which is necessary to build these libraries. If you are on Windows, you need *cmake*.
+Make sure that you have a new enough version of Python installed, as specified
+in the :ref:`SDK <sdk-download-and-install>` instructions, and that it is used by emcc (for example by
+running ``emcc.py`` using that Python).
 
+In a CI environment you may need to specify the Python version to use, if the
+default is not new enough. For example,
+`on Netlify <https://github.com/emscripten-core/emscripten/issues/12896>`_
+you can use ``PYTHON_VERSION``.
 
-Why do I get an error mentioning Uglify and ``throw new JS_Parse_Error``?
-=========================================================================
-
-In ``-O2`` and above, emscripten will optimize the JS using Uglify1. If you added any JS (using ``--pre-js``/``--post-js``/``EM_ASM``/``EM_JS``) and it contains JS that Uglify1 can't parse - like recent ES6 features - then it will throw such a parsing error.
-
-In the long term we hope to upgrade our internal JS parser. Meanwhile, you can move such code to another script tag on the page, that is, not pass it through the emscripten optimizer.
-
-See also
-
- * https://github.com/emscripten-core/emscripten/issues/6000
- * https://github.com/emscripten-core/emscripten/issues/5700
 
 Why does running LLVM bitcode generated by emcc through **lli** break with errors about ``impure_ptr``?
 =======================================================================================================

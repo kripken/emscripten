@@ -6,24 +6,12 @@ Download and install
 
 .. note:: You can also :ref:`build Emscripten from source <installing-from-source>` if you prefer that to downloading binaries using the emsdk.
 
-.. note:: There are additional ways to install Emscripten than the instructions
-    below, for example, using Homebrew on MacOS, the package manager on your linux
-    distro. However, the emsdk is the only officially supported way to use
-    Emscripten that is supported by the Emscripten project, and the only one
-    that we constantly test
-    (`emsdk CI <https://github.com/emscripten-core/emsdk/blob/master/.circleci/config.yml>`_,
-    `Emscripten GitHub CI <https://github.com/emscripten-core/emscripten/blob/master/.circleci/config.yml>`_,
-    `Chromium CI <https://ci.chromium.org/p/emscripten-releases>`_). (While we
-    don't officially support other ways of getting Emscripten, we definitely
-    appreciate the efforts by third parties to
-    `package Emscripten <https://github.com/emscripten-core/emscripten/blob/master/docs/packaging.md>`_
-    for users' convenience, and we'd like to help out, please get in touch if
-    you are such a packager!)
+.. tip:: if you'd like to install emscripten using the **unofficial** packages instead of the **officially supported** emsdk, see the bottom of the page.
 
 .. _sdk-installation-instructions:
 
-Installation instructions
-=========================
+Installation instructions using the emsdk (recommended)
+=======================================================
 
 First check the :ref:`Platform-specific notes <platform-notes-installation_instructions-SDK>` below and install any prerequisites.
 
@@ -95,7 +83,7 @@ Platform-specific notes
 Windows
 +++++++
 
-#. Install Python 2.7.12 or newer (older versions may not work due to `a GitHub change with SSL <https://github.com/emscripten-core/emscripten/issues/6275>`_).
+#. Install Python 3.6 or newer (older versions may not work due to `a GitHub change with SSL <https://github.com/emscripten-core/emscripten/issues/6275>`_).
 
   .. note:: Instead of running emscripten on Windows directly, you can use the Windows Subsystem for Linux to run it in a Linux environment.
 
@@ -103,7 +91,7 @@ macOS
 +++++
 
 If you use the Emscripten SDK it includes a bundled version of Python 3.  Otherwise
-you will need to manually install and use Python 3.5 or newer.
+you will need to manually install and use Python 3.6 or newer.
 
 These instructions explain how to install **all** the :ref:`required tools <toolchain-what-you-need>`. You can :ref:`test whether some of these are already installed <toolchain-test-which-dependencies-are-installed>` on the platform and skip those steps.
 
@@ -127,18 +115,15 @@ Linux
 
 .. note:: *Emsdk* does not install any tools to the system, or otherwise interact with Linux package managers. All file changes are done inside the **emsdk/** directory.
 
-- *Python*, *CMake*, and *Java* are not provided by *emsdk*. The user is expected to install these beforehand with the *system package manager*:
+- *Python* is not provided by *emsdk*. The user is expected to install this beforehand with the *system package manager*:
 
   ::
 
     # Install Python
     sudo apt-get install python3
 
-    # Install CMake (optional, only needed for tests and building Binaryen)
+    # Install CMake (optional, only needed for tests and building Binaryen or LLVM)
     sudo apt-get install cmake
-
-    # Install Java (optional, only needed for Closure Compiler minification)
-    sudo apt-get install default-jre
 
 .. note:: If you want to use your system's Node.js instead of the emsdk's, it may be ``node`` instead of ``nodejs``, and you can adjust the ``NODE_JS`` attribute of your ``.emscripten`` file to point to it.
 
@@ -147,7 +132,7 @@ Linux
   ::
 
     # Install git
-    sudo apt-get install git-core
+    sudo apt-get install git
 
 
 Verifying the installation
@@ -204,3 +189,37 @@ The entire Emscripten SDK is also available in the form of a `docker image
     emscripten/emsdk emcc helloworld.cpp -o helloworld.js
 
 See the Docker Hub page for more details and examples.
+
+Installation using unofficial packages
+======================================
+
+.. note:: The `emsdk` is the only officially supported way to use
+    Emscripten that is supported by the Emscripten project, and the only one
+    that we constantly test
+    (`emsdk CI <https://github.com/emscripten-core/emsdk/blob/master/.circleci/config.yml>`_,
+    `Emscripten GitHub CI <https://github.com/emscripten-core/emscripten/blob/master/.circleci/config.yml>`_,
+    `Chromium CI <https://ci.chromium.org/p/emscripten-releases>`_).
+
+While we don't officially support other ways of getting Emscripten, we definitely
+appreciate the efforts by third parties to
+`package Emscripten <https://github.com/emscripten-core/emscripten/blob/master/docs/packaging.md>`_
+for users' convenience, and we'd like to help out, please get in touch if
+you are such a packager!
+
+The following is a partial list of such unofficial emscripten packages:
+
+**Windows**
+ - package info: `emscripten` in `chocolatey <https://chocolatey.org/packages/emscripten>`_
+ - maintainer: @aminya
+
+**Homebrew**
+ - package info: https://formulae.brew.sh/formula/emscripten
+ - maintainer: @chenrui333
+
+**Arch Linux**
+ - package info: https://github.com/archlinux/svntogit-community/tree/packages/emscripten/trunk
+ - maintainer: Sven-Hendrik Haase <svenstaro@gmail.com>
+
+**Gentoo Linux** (custom overlay)
+ - package info: `dev-util/emscripten` in `darthgandalf-overlay <https://github.com/DarthGandalf/gentoo-overlay>`_
+ - maintainer: @DarthGandalf

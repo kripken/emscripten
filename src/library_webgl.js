@@ -1087,41 +1087,13 @@ var LibraryGL = {
       GLctx.disjointTimerQueryExt = GLctx.getExtension("EXT_disjoint_timer_query");
       __webgl_enable_WEBGL_multi_draw(GLctx);
 
-      // These are the 'safe' feature-enabling extensions that don't add any performance impact related to e.g. debugging, and
-      // should be enabled by default so that client GLES2/GL code will not need to go through extra hoops to get its stuff working.
-      // As new extensions are ratified at http://www.khronos.org/registry/webgl/extensions/ , feel free to add your new extensions
-      // here, as long as they don't produce a performance impact for users that might not be using those extensions.
-      // E.g. debugging-related extensions should probably be off by default.
-      var automaticallyEnabledExtensions = [ // Khronos ratified WebGL extensions ordered by number (no debug extensions):
-                                             "OES_texture_float", "OES_texture_half_float", "OES_standard_derivatives",
-                                             "OES_vertex_array_object", "WEBGL_compressed_texture_s3tc", "WEBGL_depth_texture",
-                                             "OES_element_index_uint", "EXT_texture_filter_anisotropic", "EXT_frag_depth",
-                                             "WEBGL_draw_buffers", "ANGLE_instanced_arrays", "OES_texture_float_linear",
-                                             "OES_texture_half_float_linear", "EXT_blend_minmax", "EXT_shader_texture_lod",
-                                             "EXT_texture_norm16",
-                                             // Community approved WebGL extensions ordered by number:
-                                             "WEBGL_compressed_texture_pvrtc", "EXT_color_buffer_half_float", "WEBGL_color_buffer_float",
-                                             "EXT_sRGB", "WEBGL_compressed_texture_etc1", "EXT_disjoint_timer_query",
-                                             "WEBGL_compressed_texture_etc", "WEBGL_compressed_texture_astc", "EXT_color_buffer_float",
-                                             "WEBGL_compressed_texture_s3tc_srgb", "EXT_disjoint_timer_query_webgl2",
-                                             // Old style prefixed forms of extensions (but still currently used on e.g. iPhone Xs as
-                                             // tested on iOS 12.4.1):
-                                             "WEBKIT_WEBGL_compressed_texture_pvrtc"];
-
-      function shouldEnableAutomatically(extension) {
-        var ret = false;
-        automaticallyEnabledExtensions.forEach(function(include) {
-          if (extension.indexOf(include) != -1) {
-            ret = true;
-          }
-        });
-        return ret;
-      }
-
-      var exts = GLctx.getSupportedExtensions() || []; // .getSupportedExtensions() can return null if context is lost, so coerce to empty array.
+      // .getSupportedExtensions() can return null if context is lost, so coerce to empty array.
+      var exts = GLctx.getSupportedExtensions() || [];
       exts.forEach(function(ext) {
-        if (automaticallyEnabledExtensions.indexOf(ext) != -1) {
-          GLctx.getExtension(ext); // Calling .getExtension enables that extension permanently, no need to store the return value to be enabled.
+        // WEBGL_lose_context, WEBGL_debug_renderer_info and WEBGL_debug_shaders are not enabled by default.
+        if (ext.indexOf('lose_context') < 0 && ext.indexOf('debug') < 0) {
+          // Call .getExtension() to enable that extension permanently.
+          GLctx.getExtension(ext);
         }
       });
     },
@@ -3794,18 +3766,18 @@ var LibraryGL = {
     var mapping = GL.mappedBuffers[emscriptenWebGLGetBufferBinding(target)];
     if (!mapping) {
       GL.recordError(0x502 /* GL_INVALID_OPERATION */);
-      Module.printError('buffer was never mapped in glFlushMappedBufferRange');
+      err('buffer was never mapped in glFlushMappedBufferRange');
       return;
     }
 
     if (!(mapping.access & 0x10)) {
       GL.recordError(0x502 /* GL_INVALID_OPERATION */);
-      Module.printError('buffer was not mapped with GL_MAP_FLUSH_EXPLICIT_BIT in glFlushMappedBufferRange');
+      err('buffer was not mapped with GL_MAP_FLUSH_EXPLICIT_BIT in glFlushMappedBufferRange');
       return;
     }
     if (offset < 0 || length < 0 || offset + length > mapping.length) {
       GL.recordError(0x501 /* GL_INVALID_VALUE */);
-      Module.printError('invalid range in glFlushMappedBufferRange');
+      err('invalid range in glFlushMappedBufferRange');
       return;
     }
 
@@ -3828,7 +3800,7 @@ var LibraryGL = {
     var mapping = GL.mappedBuffers[buffer];
     if (!mapping) {
       GL.recordError(0x502 /* GL_INVALID_OPERATION */);
-      Module.printError('buffer was never mapped in glUnmapBuffer');
+      err('buffer was never mapped in glUnmapBuffer');
       return 0;
     }
     GL.mappedBuffers[buffer] = null;

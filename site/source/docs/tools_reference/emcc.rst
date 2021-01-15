@@ -263,7 +263,7 @@ Options that are modified or new in *emcc* are listed below:
 
   .. note:: This option is similar to :ref:`--embed-file <emcc-embed-file>`, except that it is only relevant when generating HTML (it uses asynchronous binary :term:`XHRs <XHR>`), or JavaScript that will be used in a web page.
 
-  *emcc* runs `tools/file_packager.py <https://github.com/emscripten-core/emscripten/blob/master/tools/file_packager.py>`_ to do the actual packaging of embedded and preloaded files. You can run the file packager yourself if you want (see :ref:`packaging-files-file-packager`). You should then put the output of the file packager in an emcc ``--pre-js``, so that it executes before your main compiled code.
+  *emcc* runs `tools/file_packager <https://github.com/emscripten-core/emscripten/blob/master/tools/file_packager.py>`_ to do the actual packaging of embedded and preloaded files. You can run the file packager yourself if you want (see :ref:`packaging-files-file-packager`). You should then put the output of the file packager in an emcc ``--pre-js``, so that it executes before your main compiled code.
 
   For more information about the ``--preload-file`` options, see :ref:`packaging-files`.
 
@@ -323,9 +323,14 @@ Options that are modified or new in *emcc* are listed below:
 ``-v``
   Turns on verbose output.
 
-  This will pass ``-v`` to *Clang*, and also enable ``EMCC_DEBUG`` to generate intermediate files for the compiler's various stages. It will also run Emscripten's internal sanity checks on the toolchain, etc.
+  This will print the internal sub-commands run by emscripten as well as ``-v``
+  to *Clang*.
 
   .. tip:: ``emcc -v`` is a useful tool for diagnosing errors. It works with or without other arguments.
+
+``--check``
+  Runs Emscripten's internal sanity checks and reports any issues with the
+  current configuration.
 
 .. _emcc-cache:
 

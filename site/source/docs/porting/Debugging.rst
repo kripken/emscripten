@@ -24,9 +24,9 @@ Debug information
 
 :ref:`Emcc <emccdoc>` strips out most of the debug information from :ref:`optimized builds <Optimizing-Code>` by default. Optimisation levels :ref:`-O1 <emcc-O1>` and above remove LLVM debug information, and also disable runtime :ref:`ASSERTIONS <debugging-ASSERTIONS>` checks. From optimization level :ref:`-O2 <emcc-O2>` the code is minified by the :term:`Closure Compiler` and becomes virtually unreadable.
 
-The *emcc* :ref:`-g flag <emcc-g>` can be used to preserve debug information in the compiled output. By default, this option preserves white-space, function names and variable names.
+The *emcc* :ref:`-g flag <emcc-g>` can be used to preserve debug information in the compiled output. By default, this option includes Clang / LLVM debug information in a DWARF format in the generated WebAssembly code and preserves white-space, function names and variable names in the generated JavaScript code.
 
-The flag can also be specified with one of five levels: :ref:`-g0 <emcc-g0>`, :ref:`-g1 <emcc-g1>`, :ref:`-g2 <emcc-g2>`, :ref:`-g3 <emcc-g3>`, and :ref:`-g4 <emcc-g4>`. Each level builds on the last to provide progressively more debug information in the compiled output. The :ref:`-g3 flag <emcc-g3>` provides the same level of debug information as the :ref:`-g flag <emcc-g>`.
+The flag can also be specified with one of five levels: :ref:`-g0 <emcc-g0>`, :ref:`-g1 <emcc-g1>`, :ref:`-g2 <emcc-g2>`, :ref:`-g3 <emcc-g3>` (default level), and :ref:`-g4 <emcc-g4>`. Each level builds on the last to provide progressively more debug information in the compiled output. See :ref:`Compiler debug information flags <debugging-debug-information-g>` for more details.
 
 The :ref:`-g4 <emcc-g4>` option provides the most debug information — it generates source maps that allow you to view and debug the *C/C++ source code* in your browser's debugger on Firefox, Chrome or Safari!
 
@@ -57,7 +57,7 @@ directory (e.g. **/tmp** on UNIX).
 
 The debug logs can be analysed to profile and review the changes that were made in each step.
 
-.. note:: The debug mode can also be enabled by specifying the :ref:`verbose output <debugging-emcc-v>` compiler flag (``emcc -v``).
+.. note:: The more limited amount of debug information can also be enabled by specifying the :ref:`verbose output <debugging-emcc-v>` compiler flag (``emcc -v``).
 
 
 .. _debugging-compilation-settings:
@@ -121,10 +121,8 @@ Emscripten also supports some of Clang's sanitizers, such as :ref:`sanitizer_ubs
 emcc verbose output
 ===================
 
-Compiling with the :ref:`emcc -v <emcc-verbose>` option passes ``-v`` to LLVM and runs Emscripten's internal sanity checks on the toolchain.
-
-The verbose mode also enables Emscripten's :ref:`debugging-EMCC_DEBUG` to generate intermediate files for the compiler’s various stages.
-
+Compiling with the :ref:`emcc -v <emcc-verbose>` will cause Emscripten to output
+the sub-command that it runs as well as passes ``-v`` to Clang.
 
 .. _debugging-manual-debugging:
 

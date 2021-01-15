@@ -61,13 +61,28 @@ var LibraryDylink = {
     }
   },
 
-  $updateGOT__deps: ['$GOT'],
+  $isInternalSym: function(symName) {
+    // TODO: find a way to mark these in the binary or avoid exporting them.
+    return [
+      '__cpp_exception',
+      '__wasm_apply_data_relocs',
+      '__dso_handle',
+      '__set_stack_limits'
+    ].indexOf(symName) != -1
+#if SPLIT_MODULE
+        // Exports synthesized by wasm-split should be prefixed with '%'
+        || symName[0] == '%'
+#endif
+    ;
+  },
+
+  $updateGOT__deps: ['$GOT', '$isInternalSym'],
   $updateGOT: function(exports) {
 #if DYLINK_DEBUG
     err("updateGOT: " + Object.keys(exports).length);
 #endif
     for (var symName in exports) {
-      if (symName == '__cpp_exception' || symName == '__dso_handle' || symName == '__wasm_apply_relocs') {
+      if (isInternalSym(symName)) {
         continue;
       }
 
@@ -116,6 +131,13 @@ var LibraryDylink = {
 
     for (var e in exports) {
       var value = exports[e];
+#if SPLIT_MODULE
+      // Do not modify exports synthesized by wasm-split
+      if (e.startsWith('%')) {
+        relocated[e] = value
+        continue;
+      }
+#endif
       if (typeof value === 'object') {
         // a breaking change in the wasm spec, globals are now objects
         // https://github.com/WebAssembly/mutable-global/issues/1
@@ -250,8 +272,8 @@ var LibraryDylink = {
 
   // Loads a side module from binary data. Returns the module's exports or a
   // progise that resolves to its exports if the loadAsync flag is set.
-  $loadSideModule__deps: ['$loadDynamicLibrary', '$createInvokeFunction', '$getMemory', '$relocateExports', '$resolveGlobalSymbol', '$GOTHandler'],
-  $loadSideModule: function(binary, flags) {
+  $loadWebAssemblyModule__deps: ['$loadDynamicLibrary', '$createInvokeFunction', '$getMemory', '$relocateExports', '$resolveGlobalSymbol', '$GOTHandler'],
+  $loadWebAssemblyModule: function(binary, flags) {
     var int32View = new Uint32Array(new Uint8Array(binary.subarray(0, 24)).buffer);
     assert(int32View[0] == 0x6d736100, 'need to see wasm magic number'); // \0asm
     // we should see the dylink section right after the magic number and wasm version
@@ -395,22 +417,12 @@ var LibraryDylink = {
         'env': proxy,
         {{{ WASI_MODULE_NAME }}}: proxy,
       };
-#if ASSERTIONS
-      var oldTable = [];
-      for (var i = 0; i < tableBase; i++) {
-        oldTable.push(table.get(i));
-      }
-#endif
 
       function postInstantiation(instance) {
 #if ASSERTIONS
         // the table should be unchanged
         assert(table === originalTable);
         assert(table === wasmTable);
-        // the old part of the table should be unchanged
-        for (var i = 0; i < tableBase; i++) {
-          assert(table.get(i) === oldTable[i], 'old table entries must remain the same');
-        }
         // verify that the new table region was filled in
         for (var i = 0; i < tableSize; i++) {
           assert(table.get(tableBase + i) !== undefined, 'table entry was not filled in');
@@ -420,6 +432,9 @@ var LibraryDylink = {
         if (!flags.allowUndefined) {
           reportUndefinedSymbols();
         }
+#if STACK_OVERFLOW_CHECK >= 2
+        moduleExports['__set_stack_limits']({{{ STACK_BASE }}} , {{{ STACK_MAX }}});
+#endif
         // initialize the module
         var init = moduleExports['__post_instantiate'];
         if (init) {
@@ -478,7 +493,7 @@ var LibraryDylink = {
   // If a library was already loaded, it is not loaded a second time. However
   // flags.global and flags.nodelete are handled every time a load request is made.
   // Once a library becomes "global" or "nodelete", it cannot be removed or unloaded.
-  $loadDynamicLibrary__deps: ['$LDSO', '$loadSideModule', '$asmjsMangle', '$fetchBinary'],
+  $loadDynamicLibrary__deps: ['$LDSO', '$loadWebAssemblyModule', '$asmjsMangle', '$fetchBinary', '$isInternalSym'],
   $loadDynamicLibrary: function(lib, flags) {
     if (lib == '__main__' && !LDSO.loadedLibNames[lib]) {
       LDSO.loadedLibs[-1] = {
@@ -533,7 +548,7 @@ var LibraryDylink = {
       if (flags.fs) {
         var libData = flags.fs.readFile(libFile, {encoding: 'binary'});
         if (!(libData instanceof Uint8Array)) {
-          libData = new Uint8Array(lib_data);
+          libData = new Uint8Array(libData);
         }
         return flags.loadAsync ? Promise.resolve(libData) : libData;
       }
@@ -557,11 +572,11 @@ var LibraryDylink = {
       // module not preloaded - load lib data and create new module from it
       if (flags.loadAsync) {
         return loadLibData(lib).then(function(libData) {
-          return loadSideModule(libData, flags);
+          return loadWebAssemblyModule(libData, flags);
         });
       }
 
-      return loadSideModule(loadLibData(lib), flags);
+      return loadWebAssemblyModule(loadLibData(lib), flags);
     }
 
     // Module.symbols <- libModule.symbols (flags.global handler)
@@ -587,7 +602,7 @@ var LibraryDylink = {
         else {
           var curr = Module[sym], next = libModule[sym];
           // don't warn on functions - might be odr, linkonce_odr, etc.
-          if (!(typeof curr === 'function' && typeof next === 'function')) {
+          if (!(typeof curr === 'function' && typeof next === 'function') && !isInternalSym(sym)) {
             err("warning: symbol '" + sym + "' from '" + lib + "' already exists (duplicate symbol? or weak linking, which isn't supported yet?)");
           }
         }

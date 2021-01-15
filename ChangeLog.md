@@ -20,6 +20,45 @@ See docs/process.md for more on how version tagging works.
 
 Current Trunk
 -------------
+- Emscripten now builds a complete sysroot inside the EM_CACHE directory.
+  This includes the system headers which get copied into place there rather
+  than adding a sequence of extra include directories.
+
+2.0.12: 01/09/2021
+------------------
+- `emscripten/vr.h` and other remnants of WebVR support removed. (#13210, which
+  is a followup to #10460)
+- Stop overriding CMake default flags based on build type. This will 
+  result in builds that are more like CMake does on other platforms. You
+  may notice that `RelWithDebInfo` will now include debug info (it did not
+  before, which appears to have been an error), and that `Release` will
+  use `-O3` instead of `-O2` (which is a better choice anyhow). (#13083)
+
+2.0.11: 12/17/2020
+------------------
+- `emcc -v` no longer forces the running the sanity checks.  Sanity checks
+  are always run on first use or can be forced with `--check` or by setting
+  `EMCC_DEBUG` is set in the environment.
+- An upstream LLVM regression with global initializer linking has been fixed
+  (#13038).
+- Remove a racy unneeded assertion about async dynamic linking (#13060).
+
+2.0.10: 12/04/2020
+------------------
+- Fix handling of exit() in pthreads. (#12933)
+- Added support for C11 thread API. (#9243)
+- The WebAssembly memory used by emscripten programs is now, by default, created
+  in the wasm file and exported to JavaScript.  Previously we could create the
+  memory in JavaScript and import it into the wasm file.  The new
+  `IMPORTED_MEMORY` setting can be used to revert to the old behaviour.
+  Breaking change: This new setting is required if you provide a runtime
+  value for `wasmMemory` or `INITIAL_MEMORY` on the Module object.
+- Internally, emscripten now uses the `--sysroot` argument to point clang at
+  it headers.  This should not effect most projects but has a minor effect the
+  order of the system include paths: The root include path
+  (`<emscritpen_root>/system/include`) is now always last in the include path.
+- Fix JS pthreads proxying + WASM_BIGINT (#12935)
+- Optimize makeDynCall to use dynCall_xx function directly where needed (#12741)
 
 2.0.9: 11/16/2020
 -----------------

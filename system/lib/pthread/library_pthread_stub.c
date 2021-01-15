@@ -1,7 +1,12 @@
 #include <errno.h>
 #include <pthread.h>
+#include <semaphore.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include "pthread_impl.h"
+#include <emscripten/stack.h>
+#include <emscripten/threading.h>
+#include <emscripten/emscripten.h>
 
 int emscripten_has_threading_support() { return 0; }
 
@@ -9,236 +14,6 @@ int emscripten_num_logical_cores() { return 1; }
 
 void emscripten_force_num_logical_cores(int cores) {
   // no-op, in singlethreaded builds we will always report exactly one core.
-}
-
-uint8_t emscripten_atomic_exchange_u8(void /*uint8_t*/* addr, uint8_t newVal) {
-  uint8_t old = *(uint8_t*)addr;
-  *(uint8_t*)addr = newVal;
-  return old;
-}
-
-uint16_t emscripten_atomic_exchange_u16(void /*uint16_t*/* addr, uint16_t newVal) {
-  uint16_t old = *(uint16_t*)addr;
-  *(uint16_t*)addr = newVal;
-  return old;
-}
-
-uint32_t emscripten_atomic_exchange_u32(void /*uint32_t*/* addr, uint32_t newVal) {
-  uint32_t old = *(uint32_t*)addr;
-  *(uint32_t*)addr = newVal;
-  return old;
-}
-
-uint64_t emscripten_atomic_exchange_u64(void /*uint64_t*/* addr, uint64_t newVal) {
-  uint64_t old = *(uint64_t*)addr;
-  *(uint64_t*)addr = newVal;
-  return old;
-}
-
-uint8_t emscripten_atomic_cas_u8(void /*uint8_t*/* addr, uint8_t oldVal, uint8_t newVal) {
-  uint8_t old = *(uint8_t*)addr;
-  if (old == oldVal)
-    *(uint8_t*)addr = newVal;
-  return old;
-}
-
-uint16_t emscripten_atomic_cas_u16(void /*uint16_t*/* addr, uint16_t oldVal, uint16_t newVal) {
-  uint16_t old = *(uint16_t*)addr;
-  if (old == oldVal)
-    *(uint16_t*)addr = newVal;
-  return old;
-}
-
-uint32_t emscripten_atomic_cas_u32(void /*uint32_t*/* addr, uint32_t oldVal, uint32_t newVal) {
-  uint32_t old = *(uint32_t*)addr;
-  if (old == oldVal)
-    *(uint32_t*)addr = newVal;
-  return old;
-}
-
-uint64_t emscripten_atomic_cas_u64(void /*uint64_t*/* addr, uint64_t oldVal, uint64_t newVal) {
-  uint64_t old = *(uint64_t*)addr;
-  if (old == oldVal)
-    *(uint64_t*)addr = newVal;
-  return old;
-}
-
-uint8_t emscripten_atomic_load_u8(const void /*uint8_t*/* addr) { return *(uint8_t*)addr; }
-
-uint16_t emscripten_atomic_load_u16(const void /*uint16_t*/* addr) { return *(uint16_t*)addr; }
-
-uint32_t emscripten_atomic_load_u32(const void /*uint32_t*/* addr) { return *(uint32_t*)addr; }
-
-float emscripten_atomic_load_f32(const void /*float*/* addr) { return *(float*)addr; }
-
-uint64_t emscripten_atomic_load_u64(const void /*uint64_t*/* addr) { return *(uint64_t*)addr; }
-
-double emscripten_atomic_load_f64(const void /*double*/* addr) { return *(double*)addr; }
-
-uint8_t emscripten_atomic_store_u8(void /*uint8_t*/* addr, uint8_t val) {
-  return *(uint8_t*)addr = val;
-}
-
-uint16_t emscripten_atomic_store_u16(void /*uint16_t*/* addr, uint16_t val) {
-  return *(uint16_t*)addr = val;
-}
-
-uint32_t emscripten_atomic_store_u32(void /*uint32_t*/* addr, uint32_t val) {
-  return *(uint32_t*)addr = val;
-}
-
-float emscripten_atomic_store_f32(void /*float*/* addr, float val) { return *(float*)addr = val; }
-
-uint64_t emscripten_atomic_store_u64(void /*uint64_t*/* addr, uint64_t val) {
-  return *(uint64_t*)addr = val;
-}
-
-double emscripten_atomic_store_f64(void /*double*/* addr, double val) {
-  return *(double*)addr = val;
-}
-
-void emscripten_atomic_fence() {
-  // nop
-}
-
-uint8_t emscripten_atomic_add_u8(void /*uint8_t*/* addr, uint8_t val) {
-  uint8_t old = *(uint8_t*)addr;
-  *(uint8_t*)addr = old + val;
-  return old;
-}
-
-uint16_t emscripten_atomic_add_u16(void /*uint16_t*/* addr, uint16_t val) {
-  uint16_t old = *(uint16_t*)addr;
-  *(uint16_t*)addr = old + val;
-  return old;
-}
-
-uint32_t emscripten_atomic_add_u32(void /*uint32_t*/* addr, uint32_t val) {
-  uint32_t old = *(uint32_t*)addr;
-  *(uint32_t*)addr = old + val;
-  return old;
-}
-
-uint64_t emscripten_atomic_add_u64(void /*uint64_t*/* addr, uint64_t val) {
-  uint64_t old = *(uint64_t*)addr;
-  *(uint64_t*)addr = old + val;
-  return old;
-}
-
-uint8_t emscripten_atomic_sub_u8(void /*uint8_t*/* addr, uint8_t val) {
-  uint8_t old = *(uint8_t*)addr;
-  *(uint8_t*)addr = old - val;
-  return old;
-}
-
-uint16_t emscripten_atomic_sub_u16(void /*uint16_t*/* addr, uint16_t val) {
-  uint16_t old = *(uint16_t*)addr;
-  *(uint16_t*)addr = old - val;
-  return old;
-}
-
-uint32_t emscripten_atomic_sub_u32(void /*uint32_t*/* addr, uint32_t val) {
-  uint32_t old = *(uint32_t*)addr;
-  *(uint32_t*)addr = old - val;
-  return old;
-}
-
-uint64_t emscripten_atomic_sub_u64(void /*uint64_t*/* addr, uint64_t val) {
-  uint64_t old = *(uint64_t*)addr;
-  *(uint64_t*)addr = old - val;
-  return old;
-}
-
-uint8_t emscripten_atomic_and_u8(void /*uint8_t*/* addr, uint8_t val) {
-  uint8_t old = *(uint8_t*)addr;
-  *(uint8_t*)addr = old & val;
-  return old;
-}
-
-uint16_t emscripten_atomic_and_u16(void /*uint16_t*/* addr, uint16_t val) {
-  uint16_t old = *(uint16_t*)addr;
-  *(uint16_t*)addr = old & val;
-  return old;
-}
-
-uint32_t emscripten_atomic_and_u32(void /*uint32_t*/* addr, uint32_t val) {
-  uint32_t old = *(uint32_t*)addr;
-  *(uint32_t*)addr = old & val;
-  return old;
-}
-
-uint64_t emscripten_atomic_and_u64(void /*uint64_t*/* addr, uint64_t val) {
-  uint64_t old = *(uint64_t*)addr;
-  *(uint64_t*)addr = old & val;
-  return old;
-}
-
-uint8_t emscripten_atomic_or_u8(void /*uint8_t*/* addr, uint8_t val) {
-  uint8_t old = *(uint8_t*)addr;
-  *(uint8_t*)addr = old | val;
-  return old;
-}
-
-uint16_t emscripten_atomic_or_u16(void /*uint16_t*/* addr, uint16_t val) {
-  uint16_t old = *(uint16_t*)addr;
-  *(uint16_t*)addr = old | val;
-  return old;
-}
-
-uint32_t emscripten_atomic_or_u32(void /*uint32_t*/* addr, uint32_t val) {
-  uint32_t old = *(uint32_t*)addr;
-  *(uint32_t*)addr = old | val;
-  return old;
-}
-
-uint64_t emscripten_atomic_or_u64(void /*uint64_t*/* addr, uint64_t val) {
-  uint64_t old = *(uint64_t*)addr;
-  *(uint64_t*)addr = old | val;
-  return old;
-}
-
-uint8_t emscripten_atomic_xor_u8(void /*uint8_t*/* addr, uint8_t val) {
-  uint8_t old = *(uint8_t*)addr;
-  *(uint8_t*)addr = old ^ val;
-  return old;
-}
-
-uint16_t emscripten_atomic_xor_u16(void /*uint16_t*/* addr, uint16_t val) {
-  uint16_t old = *(uint16_t*)addr;
-  *(uint16_t*)addr = old ^ val;
-  return old;
-}
-
-uint32_t emscripten_atomic_xor_u32(void /*uint32_t*/* addr, uint32_t val) {
-  uint32_t old = *(uint32_t*)addr;
-  *(uint32_t*)addr = old ^ val;
-  return old;
-}
-
-uint64_t emscripten_atomic_xor_u64(void /*uint64_t*/* addr, uint64_t val) {
-  uint64_t old = *(uint64_t*)addr;
-  *(uint64_t*)addr = old ^ val;
-  return old;
-}
-
-uint64_t _emscripten_atomic_fetch_and_add_u64(void* addr, uint64_t val) {
-  return emscripten_atomic_add_u64(addr, val);
-}
-
-uint64_t _emscripten_atomic_fetch_and_sub_u64(void* addr, uint64_t val) {
-  return emscripten_atomic_sub_u64(addr, val);
-}
-
-uint64_t _emscripten_atomic_fetch_and_and_u64(void* addr, uint64_t val) {
-  return emscripten_atomic_and_u64(addr, val);
-}
-
-uint64_t _emscripten_atomic_fetch_and_or_u64(void* addr, uint64_t val) {
-  return emscripten_atomic_or_u64(addr, val);
-}
-
-uint64_t _emscripten_atomic_fetch_and_xor_u64(void* addr, uint64_t val) {
-  return emscripten_atomic_xor_u64(addr, val);
 }
 
 int emscripten_futex_wait(
@@ -267,11 +42,9 @@ int pthread_mutex_init(
   return 0;
 }
 
-#ifndef EMSCRIPTEN_ASAN_OVERRIDE
 int pthread_mutex_lock(pthread_mutex_t* mutex) { return 0; }
 
 int pthread_mutex_unlock(pthread_mutex_t* mutex) { return 0; }
-#endif
 
 int pthread_mutex_trylock(pthread_mutex_t* mutex) { return 0; }
 
@@ -308,7 +81,7 @@ int pthread_key_create(pthread_key_t* key, void (*destructor)(void*)) {
   if (!max_tls_entries) {
     // First time we're called, allocate entry table.
     max_tls_entries = 4;
-    tls_entries = (struct entry_t*)malloc(max_tls_entries * sizeof(void *));
+    tls_entries = (struct entry_t*)malloc(max_tls_entries * sizeof(struct entry_t));
   }
   // Find empty spot.
   size_t entry = 0;
@@ -319,7 +92,7 @@ int pthread_key_create(pthread_key_t* key, void (*destructor)(void*)) {
     // No empty spots, table full: double the table.
     max_tls_entries *= 2;
     tls_entries =
-      (struct entry_t*)realloc(tls_entries, num_tls_entries * sizeof(void *));
+      (struct entry_t*)realloc(tls_entries, max_tls_entries * sizeof(struct entry_t));
   }
   if (entry == num_tls_entries) {
     // No empty spots, but table not full.
@@ -402,10 +175,211 @@ int pthread_atfork(void (*prepare)(void), void (*parent)(void), void (*child)(vo
   return 0;
 }
 
+int pthread_cancel(pthread_t thread) {
+  return 0;
+}
+
+_Noreturn void pthread_exit(void* status) {
+   exit((int)status);
+}
+
+int pthread_detach(pthread_t t) {
+  return 0;
+}
+
+pthread_t emscripten_main_browser_thread_id() {
+  return __pthread_self();
+}
+
 // pthread_equal is defined as a macro in C, as a function for C++; undef it
 // here so we define the function for C++ that links to us.
+#ifdef pthread_equal
 #undef pthread_equal
+#endif
 
 int pthread_equal(pthread_t t1, pthread_t t2) {
   return t1 == t2;
 }
+
+int pthread_mutexattr_init(pthread_mutexattr_t *attr) {
+  return 0;
+}
+
+int pthread_mutexattr_setprotocol(pthread_mutexattr_t *attr, int protocol) {
+  return 0;
+}
+
+int pthread_mutexattr_settype(pthread_mutexattr_t *attr, int type) {
+  return 0;
+}
+
+int pthread_mutexattr_destroy(pthread_mutexattr_t *attr) {
+  return 0;
+}
+
+int pthread_mutexattr_setpshared(pthread_mutexattr_t *attr, int pshared) {
+  // XXX implement if/when getpshared is required
+  return 0;
+}
+
+int pthread_condattr_init(pthread_condattr_t * attr) {
+  return 0;
+}
+
+int pthread_condattr_destroy(pthread_condattr_t *attr) {
+  return 0;
+}
+
+int pthread_condattr_setclock(pthread_condattr_t *attr, clockid_t clk) {
+  return 0;
+}
+
+int pthread_condattr_setpshared(pthread_condattr_t *attr, int shared) {
+  return 0;
+}
+
+int pthread_condattr_getclock(const pthread_condattr_t *attr, clockid_t* clk) {
+  return 0;
+}
+
+int pthread_condattr_getpshared(const pthread_condattr_t *attr, int *shared) {
+  return 0;
+}
+
+int pthread_attr_init(pthread_attr_t *attr) {
+  return 0;
+}
+
+int pthread_getattr_np(pthread_t thread, pthread_attr_t *attr) {
+  return 0;
+}
+
+int pthread_attr_destroy(pthread_attr_t *attr) {
+  return 0;
+}
+
+int pthread_attr_getdetachstate(const pthread_attr_t *attr, int *detachstate) {
+  return 0;
+}
+
+int pthread_attr_getstack(const pthread_attr_t *attr, void **stackaddr, size_t *stacksize) {
+  /*FIXME: assumes that there is only one thread, and that attr is the
+    current thread*/
+  *stackaddr = (void*)emscripten_stack_get_base();
+  *stacksize = emscripten_stack_get_base() - emscripten_stack_get_end();
+  return 0;
+}
+
+int pthread_setcancelstate() {
+  return 0;
+}
+
+int pthread_setcanceltype() {
+  return 0;
+}
+
+int pthread_rwlock_init(pthread_rwlock_t* rwlock, const pthread_rwlockattr_t* attr) {
+  return 0;
+}
+
+int pthread_rwlock_destroy(pthread_rwlock_t *rwlock) {
+  return 0;
+}
+
+int pthread_rwlock_rdlock(pthread_rwlock_t *rwlock) {
+  return 0;
+}
+
+int pthread_rwlock_tryrdlock(pthread_rwlock_t* rwlock) {
+  return 0;
+}
+
+int pthread_rwlock_timedrdlock(pthread_rwlock_t* rwlock, const struct timespec* abs_timeout) {
+  return 0;
+}
+
+int pthread_rwlock_wrlock(pthread_rwlock_t *rwlock) {
+  return 0;
+}
+
+int pthread_rwlock_trywrlock(pthread_rwlock_t *rwlock) {
+  return 0;
+}
+
+int pthread_rwlock_timedwrlock(pthread_rwlock_t* rwlock, const struct timespec* abs_timeout) {
+  return 0;
+}
+
+int pthread_rwlock_unlock(pthread_rwlock_t *rwlock) {
+  return 0;
+}
+
+int pthread_rwlockattr_init(pthread_rwlockattr_t *attr) {
+  return 0;
+}
+
+int pthread_rwlockattr_destroy(pthread_rwlockattr_t *attr) {
+  return 0;
+}
+
+int pthread_rwlockattr_setpshared(pthread_rwlockattr_t* attr, int pshared) {
+  return 0;
+}
+
+int pthread_rwlockattr_getpshared(const pthread_rwlockattr_t* attr, int *pshared) {
+  return 0;
+}
+
+int pthread_spin_init(pthread_spinlock_t *lock, int pshared) {
+  return 0;
+}
+
+int pthread_spin_destroy(pthread_spinlock_t *lock) {
+  return 0;
+}
+
+int pthread_spin_lock(pthread_spinlock_t *lock) {
+  return 0;
+}
+
+int pthread_spin_trylock(pthread_spinlock_t *lock) {
+  return 0;
+}
+
+int pthread_spin_unlock(pthread_spinlock_t *lock) {
+  return 0;
+}
+
+int pthread_attr_setdetachstate(pthread_attr_t* attr, int detachstate) {
+  return 0;
+}
+
+int pthread_attr_setschedparam(pthread_attr_t* attr, const struct sched_param* param) {
+  return 0;
+}
+
+int pthread_attr_setstacksize(pthread_attr_t *attr, size_t stacksize) {
+  return 0;
+}
+
+int sem_init(sem_t *sem, int pshared, unsigned int value) {
+  return 0;
+}
+
+int sem_post(sem_t *sem) {
+  return 0;
+}
+
+int sem_wait(sem_t *sem) {
+  return 0;
+}
+
+int sem_trywait(sem_t *sem) {
+  return 0;
+}
+
+int sem_destroy(sem_t *sem) {
+  return 0;
+}
+
+void __wait(volatile int *addr, volatile int *waiters, int val, int priv) {}

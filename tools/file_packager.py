@@ -21,7 +21,7 @@ data downloads.
 
 Usage:
 
-  file_packager.py TARGET [--preload A [B..]] [--embed C [D..]] [--exclude E [F..]]] [--js-output=OUTPUT.js] [--no-force] [--use-preload-cache] [--indexedDB-name=EM_PRELOAD_CACHE] [--separate-metadata] [--lz4] [--use-preload-plugins]
+  file_packager TARGET [--preload A [B..]] [--embed C [D..]] [--exclude E [F..]]] [--js-output=OUTPUT.js] [--no-force] [--use-preload-cache] [--indexedDB-name=EM_PRELOAD_CACHE] [--separate-metadata] [--lz4] [--use-preload-plugins]
 
   --preload  ,
   --embed    See emcc --help for more details on those options.
@@ -29,7 +29,7 @@ Usage:
   --exclude E [F..] Specifies filename pattern matches to use for excluding given files from being added to the package.
                     See https://docs.python.org/2/library/fnmatch.html for syntax.
 
-  --from-emcc Indicate that `file_packager.py` was called from `emcc.py` and will be further processed by it, so some code generation can be skipped here
+  --from-emcc Indicate that `file_packager` was called from `emcc` and will be further processed by it, so some code generation can be skipped here
 
   --js-output=FILE Writes output in FILE, if not specified, standard output is used.
 
@@ -75,7 +75,7 @@ import fnmatch
 import json
 
 if len(sys.argv) == 1:
-  print('''Usage: file_packager.py TARGET [--preload A [B..]] [--embed C [D..]] [--exclude E [F..]]] [--js-output=OUTPUT.js] [--no-force] [--use-preload-cache] [--indexedDB-name=EM_PRELOAD_CACHE] [--separate-metadata] [--lz4] [--use-preload-plugins]
+  print('''Usage: file_packager TARGET [--preload A [B..]] [--embed C [D..]] [--exclude E [F..]]] [--js-output=OUTPUT.js] [--no-force] [--use-preload-cache] [--indexedDB-name=EM_PRELOAD_CACHE] [--separate-metadata] [--lz4] [--use-preload-plugins]
 See the source for more details.''')
   sys.exit(0)
 
@@ -268,7 +268,7 @@ def main():
     return 1
 
   ret = ''
-  # emcc.py will add this to the output itself, so it is only needed for
+  # emcc will add this to the output itself, so it is only needed for
   # standalone calls
   if not from_emcc:
     ret = '''
@@ -377,8 +377,8 @@ def main():
       for i in range(len(parts)):
         partial = '/'.join(parts[:i + 1])
         if partial not in partial_dirs:
-          code += ('''Module['FS_createPath']('/%s', '%s', true, true);\n'''
-                   % ('/'.join(parts[:i]), parts[i]))
+          code += ('''Module['FS_createPath'](%s, %s, true, true);\n'''
+                   % (json.dumps('/' + '/'.join(parts[:i])), json.dumps(parts[i])))
           partial_dirs.append(partial)
 
   if has_preloaded:
@@ -419,40 +419,41 @@ def main():
           Module['removeRunDependency']('fp ' + that.name);
   '''
 
-    # Data requests - for getting a block of data out of the big archive - have
-    # a similar API to XHRs
-    code += '''
-      /** @constructor */
-      function DataRequest(start, end, audio) {
-        this.start = start;
-        this.end = end;
-        this.audio = audio;
-      }
-      DataRequest.prototype = {
-        requests: {},
-        open: function(mode, name) {
-          this.name = name;
-          this.requests[name] = this;
-          Module['addRunDependency']('fp ' + this.name);
-        },
-        send: function() {},
-        onload: function() {
-          var byteArray = this.byteArray.subarray(this.start, this.end);
-          this.finish(byteArray);
-        },
-        finish: function(byteArray) {
-          var that = this;
-  %s
-          this.requests[this.name] = null;
-        }
-      };
-  %s
-    ''' % (create_preloaded if use_preload_plugins else create_data, '''
-          var files = metadata['files'];
-          for (var i = 0; i < files.length; ++i) {
-            new DataRequest(files[i]['start'], files[i]['end'], files[i]['audio']).open('GET', files[i]['filename']);
+    if not lz4:
+        # Data requests - for getting a block of data out of the big archive - have
+        # a similar API to XHRs
+        code += '''
+          /** @constructor */
+          function DataRequest(start, end, audio) {
+            this.start = start;
+            this.end = end;
+            this.audio = audio;
           }
-  ''' if not lz4 else '')
+          DataRequest.prototype = {
+            requests: {},
+            open: function(mode, name) {
+              this.name = name;
+              this.requests[name] = this;
+              Module['addRunDependency']('fp ' + this.name);
+            },
+            send: function() {},
+            onload: function() {
+              var byteArray = this.byteArray.subarray(this.start, this.end);
+              this.finish(byteArray);
+            },
+            finish: function(byteArray) {
+              var that = this;
+      %s
+              this.requests[this.name] = null;
+            }
+          };
+      %s
+        ''' % (create_preloaded if use_preload_plugins else create_data, '''
+              var files = metadata['files'];
+              for (var i = 0; i < files.length; ++i) {
+                new DataRequest(files[i]['start'], files[i]['end'], files[i]['audio']).open('GET', files[i]['filename']);
+              }
+      ''')
 
   counter = 0
   for file_ in data_files:
@@ -508,14 +509,14 @@ def main():
       temp = data_target + '.orig'
       shutil.move(data_target, temp)
       meta = shared.run_js_tool(shared.path_from_root('tools', 'lz4-compress.js'),
-                                [shared.path_from_root('src', 'mini-lz4.js'),
+                                [shared.path_from_root('third_party', 'mini-lz4.js'),
                                 temp, data_target], stdout=PIPE)
       os.unlink(temp)
       use_data = '''
             var compressedData = %s;
             compressedData['data'] = byteArray;
-            assert(typeof LZ4 === 'object', 'LZ4 not present - was your app build with  -s LZ4=1  ?');
-            LZ4.loadPackage({ 'metadata': metadata, 'compressedData': compressedData });
+            assert(typeof Module.LZ4 === 'object', 'LZ4 not present - was your app build with  -s LZ4=1  ?');
+            Module.LZ4.loadPackage({ 'metadata': metadata, 'compressedData': compressedData });
             Module['removeRunDependency']('datafile_%s');
       ''' % (meta, shared.JS.escape_for_js_string(data_target))
 

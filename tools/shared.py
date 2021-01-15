@@ -33,7 +33,7 @@ from . import config
 
 DEBUG = int(os.environ.get('EMCC_DEBUG', '0'))
 EXPECTED_NODE_VERSION = (4, 1, 1)
-EXPECTED_BINARYEN_VERSION = 98
+EXPECTED_BINARYEN_VERSION = 99
 EXPECTED_LLVM_VERSION = "12.0"
 SIMD_INTEL_FEATURE_TOWER = ['-msse', '-msse2', '-msse3', '-mssse3', '-msse4.1', '-msse4.2', '-mavx']
 SIMD_NEON_FLAGS = ['-mfpu=neon']
@@ -99,6 +99,7 @@ def run_process(cmd, check=True, input=None, *args, **kw):
 
 def check_call(cmd, *args, **kw):
   """Like `run_process` above but treat failures as fatal and exit_with_error."""
+  print_compiler_stage(cmd)
   try:
     return run_process(cmd, *args, **kw)
   except subprocess.CalledProcessError as e:
@@ -114,7 +115,6 @@ def run_js_tool(filename, jsargs=[], *args, **kw):
   implemented in javascript.
   """
   command = config.NODE_JS + [filename] + jsargs
-  print_compiler_stage(command)
   return check_call(command, *args, **kw).stdout
 
 
@@ -273,7 +273,7 @@ def check_sanity(force=False):
       return # config stored directly in EM_CONFIG => skip sanity checks
     expected = generate_sanity()
 
-    sanity_file = Cache.get_path('sanity.txt', root=True)
+    sanity_file = Cache.get_path('sanity.txt')
     if os.path.exists(sanity_file):
       sanity_data = open(sanity_file).read()
       if sanity_data != expected:
@@ -420,9 +420,7 @@ def emsdk_ldflags(user_args):
     return []
 
   library_paths = [
-      path_from_root('system', 'local', 'lib'),
-      path_from_root('system', 'lib'),
-      Cache.dirname
+      Cache.get_lib_dir(absolute=True)
   ]
   ldflags = ['-L' + l for l in library_paths]
 
@@ -437,36 +435,12 @@ def emsdk_ldflags(user_args):
   return ldflags
 
 
-def emsdk_cflags(user_args, cxx):
+def emsdk_cflags(user_args):
   # Disable system C and C++ include directories, and add our own (using
   # -isystem so they are last, like system dirs, which allows projects to
   # override them)
 
-  c_opts = ['-Xclang', '-nostdsysteminc']
-
-  c_include_paths = [
-    path_from_root('system', 'include', 'compat'),
-    path_from_root('system', 'include'),
-    path_from_root('system', 'include', 'libc'),
-    path_from_root('system', 'lib', 'libc', 'musl', 'arch', 'emscripten'),
-    path_from_root('system', 'local', 'include'),
-    path_from_root('system', 'include', 'SSE'),
-    path_from_root('system', 'include', 'neon'),
-    path_from_root('system', 'lib', 'compiler-rt', 'include'),
-    path_from_root('system', 'lib', 'libunwind', 'include'),
-    Cache.get_path('include')
-  ]
-
-  cxx_include_paths = [
-    path_from_root('system', 'include', 'libcxx'),
-    path_from_root('system', 'lib', 'libcxxabi', 'include'),
-  ]
-
-  def include_directive(paths):
-    result = []
-    for path in paths:
-      result += ['-Xclang', '-isystem' + path]
-    return result
+  c_opts = ['--sysroot=' + Cache.get_sysroot_dir(absolute=True)]
 
   def array_contains_any_of(hay, needles):
     for n in needles:
@@ -499,25 +473,23 @@ def emsdk_cflags(user_args, cxx):
   if array_contains_any_of(user_args, SIMD_NEON_FLAGS):
     c_opts += ['-D__ARM_NEON__=1']
 
-  # libcxx include paths must be defined before libc's include paths otherwise libcxx will not build
-  if cxx:
-    c_opts += include_directive(cxx_include_paths)
-  return c_opts + include_directive(c_include_paths)
+  return c_opts + ['-Xclang', '-iwithsysroot' + os.path.join('/include', 'compat')]
 
 
-def get_asmflags():
+def get_clang_flags():
   return ['-target', get_llvm_target()]
 
 
-def get_cflags(user_args, cxx):
+def get_cflags(user_args):
+  c_opts = get_clang_flags()
+
   # Set the LIBCPP ABI version to at least 2 so that we get nicely aligned string
   # data and other nice fixes.
-  c_opts = [# '-fno-threadsafe-statics', # disabled due to issue 1289
-            '-target', get_llvm_target(),
-            '-D__EMSCRIPTEN_major__=' + str(EMSCRIPTEN_VERSION_MAJOR),
-            '-D__EMSCRIPTEN_minor__=' + str(EMSCRIPTEN_VERSION_MINOR),
-            '-D__EMSCRIPTEN_tiny__=' + str(EMSCRIPTEN_VERSION_TINY),
-            '-D_LIBCPP_ABI_VERSION=2']
+  c_opts += [# '-fno-threadsafe-statics', # disabled due to issue 1289
+             '-D__EMSCRIPTEN_major__=' + str(EMSCRIPTEN_VERSION_MAJOR),
+             '-D__EMSCRIPTEN_minor__=' + str(EMSCRIPTEN_VERSION_MINOR),
+             '-D__EMSCRIPTEN_tiny__=' + str(EMSCRIPTEN_VERSION_TINY),
+             '-D_LIBCPP_ABI_VERSION=2']
 
   # For compatability with the fastcomp compiler that defined these
   c_opts += ['-Dunix',
@@ -536,7 +508,7 @@ def get_cflags(user_args, cxx):
   if os.environ.get('EMMAKEN_NO_SDK') or '-nostdinc' in user_args:
     return c_opts
 
-  return c_opts + emsdk_cflags(user_args, cxx)
+  return c_opts + emsdk_cflags(user_args)
 
 
 # Settings. A global singleton. Not pretty, but nicer than passing |, settings| everywhere
@@ -743,11 +715,6 @@ def asmjs_mangle(name):
     return '_' + name
   else:
     return name
-
-
-def reconfigure_cache():
-  global Cache
-  Cache = cache.Cache(config.CACHE)
 
 
 class JS(object):
@@ -1000,7 +967,7 @@ EMCC = bat_suffix(path_from_root('emcc'))
 EMXX = bat_suffix(path_from_root('em++'))
 EMAR = bat_suffix(path_from_root('emar'))
 EMRANLIB = bat_suffix(path_from_root('emranlib'))
-FILE_PACKAGER = path_from_root('tools', 'file_packager.py')
+FILE_PACKAGER = bat_suffix(path_from_root('tools', 'file_packager'))
 
 apply_configuration()
 

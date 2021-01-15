@@ -128,9 +128,6 @@ var MEM_INIT_IN_WASM = 0;
 // This is set internally when needed (SINGLE_FILE)
 var SUPPORT_BASE64_EMBEDDING = 0;
 
-// the total initial wasm table size, only used in RELOCATABLE mode
-var WASM_TABLE_SIZE = 0;
-
 // the possible environments the code may run in.
 var ENVIRONMENT_MAY_BE_WEB = 1;
 var ENVIRONMENT_MAY_BE_WORKER = 1;
@@ -196,3 +193,9 @@ var STRUCT_INFO = '';
 var MEMORYPROFILER = 0;
 
 var GENERATE_SOURCE_MAP = 0;
+
+// Memory layout.  These are only used/set in RELOCATABLE builds.  Otherwise
+// memory layout is fixed in the wasm binary at link time.
+var STACK_BASE = 0;
+var STACK_MAX = 0;
+var HEAP_BASE = 0;

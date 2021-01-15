@@ -6,7 +6,6 @@
 import glob
 import hashlib
 import itertools
-import json
 import logging
 import os
 import re
@@ -16,7 +15,8 @@ import tarfile
 import zipfile
 from glob import iglob
 
-from . import shared, building, ports, config
+from . import shared, building, ports, config, utils
+from . import deps_info
 from tools.shared import mangle_c_symbol_name, demangle_c_symbol_name
 
 stdout = None
@@ -38,7 +38,8 @@ def files_in_path(path_components, filenames):
 
 def glob_in_path(path_components, glob_pattern, excludes=()):
   srcdir = shared.path_from_root(*path_components)
-  return [f for f in iglob(os.path.join(srcdir, glob_pattern)) if os.path.basename(f) not in excludes]
+  files = iglob(os.path.join(srcdir, glob_pattern), recursive=True)
+  return [f for f in files if os.path.basename(f) not in excludes]
 
 
 def get_all_files_under(dirname):
@@ -82,6 +83,10 @@ def run_one_command(cmd):
 
 
 def run_build_commands(commands):
+  # Before running a set of build commands make sure the common sysroot
+  # headers are installed.  This prevents each sub-process from attempting
+  # to setup the sysroot itself.
+  ensure_sysroot()
   cores = min(len(commands), building.get_num_cores())
   if cores <= 1:
     for command in commands:
@@ -326,7 +331,7 @@ class Library(object):
     return True
 
   def erase(self):
-    shared.Cache.erase_file(self.get_filename())
+    shared.Cache.erase_file(shared.Cache.get_lib_name(self.get_filename()))
 
   def get_path(self):
     """
@@ -334,7 +339,7 @@ class Library(object):
 
     This will trigger a build if this library is not in the cache.
     """
-    return shared.Cache.get(self.get_filename(), self.build)
+    return shared.Cache.get_lib(self.get_filename(), self.build)
 
   def get_files(self):
     """
@@ -693,7 +698,7 @@ class libc(AsanInstrumentedLibrary, MuslInternalLibrary, MTLibrary):
         'inet_addr.c', 'res_query.c', 'res_querydomain.c', 'gai_strerror.c',
         'proto.c', 'gethostbyaddr.c', 'gethostbyaddr_r.c', 'gethostbyname.c',
         'gethostbyname2_r.c', 'gethostbyname_r.c', 'gethostbyname2.c',
-        'usleep.c', 'alarm.c', 'syscall.c', '_exit.c', 'popen.c',
+        'alarm.c', 'syscall.c', '_exit.c', 'popen.c',
         'getgrouplist.c', 'initgroups.c', 'wordexp.c', 'timer_create.c',
         'faccessat.c',
         # 'process' exclusion
@@ -739,7 +744,7 @@ class libc(AsanInstrumentedLibrary, MuslInternalLibrary, MTLibrary):
     # Allowed files from ignored modules
     libc_files += files_in_path(
         path_components=['system', 'lib', 'libc', 'musl', 'src', 'time'],
-        filenames=['clock_settime.c', 'asctime.c', 'ctime.c', 'gmtime.c', 'localtime.c'])
+        filenames=['clock_settime.c', 'asctime.c', 'ctime.c', 'gmtime.c', 'localtime.c', 'nanosleep.c'])
     libc_files += files_in_path(
         path_components=['system', 'lib', 'libc', 'musl', 'src', 'legacy'],
         filenames=['getpagesize.c', 'err.c'])
@@ -755,6 +760,74 @@ class libc(AsanInstrumentedLibrary, MuslInternalLibrary, MTLibrary):
     libc_files += files_in_path(
         path_components=['system', 'lib', 'libc'],
         filenames=['extras.c', 'wasi-helpers.c'])
+
+    libc_files += files_in_path(
+        path_components=['system', 'lib', 'pthread'],
+        filenames=['emscripten_atomic.c'])
+
+    libc_files += files_in_path(
+        path_components=['system', 'lib', 'libc', 'musl', 'src', 'thread'],
+        filenames=[
+          'pthread_self.c',
+          # C11 thread library functions
+          'thrd_create.c',
+          'thrd_exit.c',
+          'thrd_join.c',
+          'thrd_sleep.c',
+          'thrd_yield.c',
+          'call_once.c',
+        ])
+
+    if self.is_mt:
+      libc_files += files_in_path(
+        path_components=['system', 'lib', 'libc', 'musl', 'src', 'thread'],
+        filenames=[
+          'pthread_attr_destroy.c', 'pthread_condattr_setpshared.c',
+          'pthread_mutex_lock.c', 'pthread_spin_destroy.c', 'pthread_attr_get.c',
+          'pthread_cond_broadcast.c', 'pthread_mutex_setprioceiling.c',
+          'pthread_spin_init.c', 'pthread_attr_init.c', 'pthread_cond_destroy.c',
+          'pthread_mutex_timedlock.c', 'pthread_spin_lock.c',
+          'pthread_attr_setdetachstate.c', 'pthread_cond_init.c',
+          'pthread_mutex_trylock.c', 'pthread_spin_trylock.c',
+          'pthread_attr_setguardsize.c', 'pthread_cond_signal.c',
+          'pthread_mutex_unlock.c', 'pthread_spin_unlock.c',
+          'pthread_attr_setinheritsched.c', 'pthread_cond_timedwait.c',
+          'pthread_once.c', 'sem_destroy.c', 'pthread_attr_setschedparam.c',
+          'pthread_cond_wait.c', 'pthread_rwlockattr_destroy.c', 'sem_getvalue.c',
+          'pthread_attr_setschedpolicy.c', 'pthread_equal.c', 'pthread_rwlockattr_init.c',
+          'sem_init.c', 'pthread_attr_setscope.c', 'pthread_getspecific.c',
+          'pthread_rwlockattr_setpshared.c', 'sem_open.c', 'pthread_attr_setstack.c',
+          'pthread_key_create.c', 'pthread_rwlock_destroy.c', 'sem_post.c',
+          'pthread_attr_setstacksize.c', 'pthread_mutexattr_destroy.c',
+          'pthread_rwlock_init.c', 'sem_timedwait.c', 'pthread_barrierattr_destroy.c',
+          'pthread_mutexattr_init.c', 'pthread_rwlock_rdlock.c', 'sem_trywait.c',
+          'pthread_barrierattr_init.c', 'pthread_mutexattr_setprotocol.c',
+          'pthread_rwlock_timedrdlock.c', 'sem_unlink.c',
+          'pthread_barrierattr_setpshared.c', 'pthread_mutexattr_setpshared.c',
+          'pthread_rwlock_timedwrlock.c', 'sem_wait.c', 'pthread_barrier_destroy.c',
+          'pthread_mutexattr_setrobust.c', 'pthread_rwlock_tryrdlock.c',
+          '__timedwait.c', 'pthread_barrier_init.c', 'pthread_mutexattr_settype.c',
+          'pthread_rwlock_trywrlock.c', 'vmlock.c', 'pthread_barrier_wait.c',
+          'pthread_mutex_consistent.c', 'pthread_rwlock_unlock.c', '__wait.c',
+          'pthread_condattr_destroy.c', 'pthread_mutex_destroy.c',
+          'pthread_rwlock_wrlock.c', 'pthread_condattr_init.c',
+          'pthread_mutex_getprioceiling.c', 'pthread_setcanceltype.c',
+          'pthread_condattr_setclock.c', 'pthread_mutex_init.c',
+          'pthread_setspecific.c', 'pthread_setcancelstate.c',
+          'pthread_getconcurrency.c', 'pthread_setconcurrency.c',
+          'pthread_getschedparam.c', 'pthread_setschedparam.c',
+          'pthread_setschedprio.c', 'pthread_atfork.c',
+          'pthread_getcpuclockid.c',
+        ])
+      libc_files += files_in_path(
+        path_components=['system', 'lib', 'pthread'],
+        filenames=[
+          'library_pthread.c',
+          'emscripten_tls_init.c',
+          'emscripten_thread_state.s',
+        ])
+    else:
+      libc_files += [shared.path_from_root('system', 'lib', 'pthread', 'library_pthread_stub.c')]
 
     return libc_files
 
@@ -879,51 +952,18 @@ class libcxx(NoExceptLibrary, MTLibrary):
   cflags = ['-DLIBCXX_BUILDING_LIBCXXABI=1', '-D_LIBCPP_BUILDING_LIBRARY', '-Oz',
             '-D_LIBCPP_DISABLE_VISIBILITY_ANNOTATIONS']
 
-  src_dir = ['system', 'lib', 'libcxx']
-  src_files = [
-    'algorithm.cpp',
-    'any.cpp',
-    'bind.cpp',
-    'charconv.cpp',
-    'chrono.cpp',
-    'condition_variable.cpp',
-    'condition_variable_destructor.cpp',
-    'debug.cpp',
-    'exception.cpp',
-    'functional.cpp',
-    'future.cpp',
-    'hash.cpp',
-    'ios.cpp',
-    'iostream.cpp',
-    'locale.cpp',
-    'memory.cpp',
-    'mutex.cpp',
-    'mutex_destructor.cpp',
-    'new.cpp',
-    'optional.cpp',
-    'random.cpp',
-    'regex.cpp',
-    'shared_mutex.cpp',
-    'stdexcept.cpp',
-    'string.cpp',
-    'strstream.cpp',
-    'system_error.cpp',
-    'thread.cpp',
-    'typeinfo.cpp',
-    'utility.cpp',
-    'valarray.cpp',
-    'variant.cpp',
-    'vector.cpp',
-    os.path.join('experimental', 'memory_resource.cpp'),
-    os.path.join('filesystem', 'directory_iterator.cpp'),
-    os.path.join('filesystem', 'operations.cpp')
-  ]
+  src_dir = ['system', 'lib', 'libcxx', 'src']
+  src_glob = '**/*.cpp'
+  src_glob_exclude = ['locale_win32.cpp', 'thread_win32.cpp', 'support.cpp', 'int128_builtins.cpp']
 
 
 class libunwind(NoExceptLibrary, MTLibrary):
   name = 'libunwind'
   cflags = ['-Oz', '-D_LIBUNWIND_DISABLE_VISIBILITY_ANNOTATIONS']
   src_dir = ['system', 'lib', 'libunwind', 'src']
+  # Without this we can't build libunwind since it will pickup the unwind.h
+  # that is part of llvm (which is not compatible for some reason).
+  includes = [['system', 'lib', 'libunwind', 'include']]
   src_files = ['Unwind-wasm.cpp']
 
   def __init__(self, **kwargs):
@@ -1157,63 +1197,6 @@ class libhtml5(Library):
   src_glob = '*.c'
 
 
-class libpthread(AsanInstrumentedLibrary, MuslInternalLibrary, MTLibrary):
-  name = 'libpthread'
-  cflags = ['-O2']
-
-  def get_files(self):
-    if self.is_mt:
-      files = files_in_path(
-        path_components=['system', 'lib', 'libc', 'musl', 'src', 'thread'],
-        filenames=[
-          'pthread_attr_destroy.c', 'pthread_condattr_setpshared.c',
-          'pthread_mutex_lock.c', 'pthread_spin_destroy.c', 'pthread_attr_get.c',
-          'pthread_cond_broadcast.c', 'pthread_mutex_setprioceiling.c',
-          'pthread_spin_init.c', 'pthread_attr_init.c', 'pthread_cond_destroy.c',
-          'pthread_mutex_timedlock.c', 'pthread_spin_lock.c',
-          'pthread_attr_setdetachstate.c', 'pthread_cond_init.c',
-          'pthread_mutex_trylock.c', 'pthread_spin_trylock.c',
-          'pthread_attr_setguardsize.c', 'pthread_cond_signal.c',
-          'pthread_mutex_unlock.c', 'pthread_spin_unlock.c',
-          'pthread_attr_setinheritsched.c', 'pthread_cond_timedwait.c',
-          'pthread_once.c', 'sem_destroy.c', 'pthread_attr_setschedparam.c',
-          'pthread_cond_wait.c', 'pthread_rwlockattr_destroy.c', 'sem_getvalue.c',
-          'pthread_attr_setschedpolicy.c', 'pthread_equal.c', 'pthread_rwlockattr_init.c',
-          'sem_init.c', 'pthread_attr_setscope.c', 'pthread_getspecific.c',
-          'pthread_rwlockattr_setpshared.c', 'sem_open.c', 'pthread_attr_setstack.c',
-          'pthread_key_create.c', 'pthread_rwlock_destroy.c', 'sem_post.c',
-          'pthread_attr_setstacksize.c', 'pthread_mutexattr_destroy.c',
-          'pthread_rwlock_init.c', 'sem_timedwait.c', 'pthread_barrierattr_destroy.c',
-          'pthread_mutexattr_init.c', 'pthread_rwlock_rdlock.c', 'sem_trywait.c',
-          'pthread_barrierattr_init.c', 'pthread_mutexattr_setprotocol.c',
-          'pthread_rwlock_timedrdlock.c', 'sem_unlink.c',
-          'pthread_barrierattr_setpshared.c', 'pthread_mutexattr_setpshared.c',
-          'pthread_rwlock_timedwrlock.c', 'sem_wait.c', 'pthread_barrier_destroy.c',
-          'pthread_mutexattr_setrobust.c', 'pthread_rwlock_tryrdlock.c',
-          '__timedwait.c', 'pthread_barrier_init.c', 'pthread_mutexattr_settype.c',
-          'pthread_rwlock_trywrlock.c', 'vmlock.c', 'pthread_barrier_wait.c',
-          'pthread_mutex_consistent.c', 'pthread_rwlock_unlock.c', '__wait.c',
-          'pthread_condattr_destroy.c', 'pthread_mutex_destroy.c',
-          'pthread_rwlock_wrlock.c', 'pthread_condattr_init.c',
-          'pthread_mutex_getprioceiling.c', 'pthread_setcanceltype.c',
-          'pthread_condattr_setclock.c', 'pthread_mutex_init.c',
-          'pthread_setspecific.c', 'pthread_setcancelstate.c'
-        ])
-      files += [shared.path_from_root('system', 'lib', 'pthread', 'library_pthread.c')]
-      files += [shared.path_from_root('system', 'lib', 'pthread', 'library_pthread_tls.c')]
-      files += [shared.path_from_root('system', 'lib', 'pthread', 'library_pthread_atomics.c')]
-      return files
-    elif self.is_ww:
-      return [shared.path_from_root('system', 'lib', 'pthread', 'library_pthread_atomics.c'),
-              shared.path_from_root('system', 'lib', 'pthread', 'library_wasm_worker.c')]
-    else:
-      return [shared.path_from_root('system', 'lib', 'pthread', 'library_pthread_stub.c')]
-
-  def get_base_name_prefix(self):
-    if self.is_mt or self.is_ww: return 'libpthread'
-    return 'libpthread_stub'
-
-
 class CompilerRTLibrary(Library):
   cflags = ['-O2', '-fno-builtin']
   # compiler_rt files can't currently be part of LTO although we are hoping to remove this
@@ -1355,7 +1338,6 @@ class libstandalonewasm(MuslInternalLibrary):
                    'gettimeofday.c',
                    'gmtime_r.c',
                    'localtime_r.c',
-                   'nanosleep.c',
                    'mktime.c',
                    'time.c'])
     # It is more efficient to use JS for __assert_fail, as it avoids always
@@ -1404,56 +1386,11 @@ def calculate(temp_files, cxx, forced, stdout_=None, stderr_=None):
   if only_forced:
     temp_files = []
 
-  # deps_info.json is a mechanism that lets JS code depend on C functions. This
-  # needs special help because of how linking works:
-  #
-  #   1. Receive some input files (.o, .c, etc.) from the user.
-  #   2. Link them with system libraries.
-  #   3. Whatever symbols are still unresolved, look in JS libraries for them.
-  #
-  # This makes C->JS calls work in a natural way: if compiled code depends on
-  # a function foo() that is implemented in a JS library, it will be unresolved
-  # after stage 2, and therefore linked in at stage 3. The problem is the other
-  # direction: if a JS library function decides it needs some function from say
-  # libc, then at stage 3 it is too late to link in more libc code. That's
-  # where deps_info.json comes in.
-  #
-  # Specifically, before stage 2 (linking with system libraries) we look at what
-  # symbols are required by the input files. Imagine that js_func in a JS
-  # library depends on libc_func in libc. Then if deps_info.json tells us
-  #
-  #  "js_func": ["libc_func"]
-  #
-  # then if we see js_func is required (undefined) before stage 2, then we add
-  # a requirement to link in libc_func when linking in system libraries. All
-  # we do with deps_info.json is see if any of the keys are among the
-  # undefined symbols before stage 2, and if they are, add their values to the
-  # things we need to link in.
-  #
-  # This usually works the way you want, but note that it happens *before* stage
-  # 2 and not after it. That is, we look for js_func before linking in system
-  # libraries. If you have a situation where
-  #
-  #   user_code => other_libc_func => js_func => libc_func
-  #
-  # then the deps_info.json entry must contain
-  #
-  #  "other_libc_func": ["libc_func"]
-  #
-  # because that is what we see before stage 2: all we see is that
-  # other_libc_func is going to be linked in, and we don't know yet that it
-  # will end up calling js_func. But the presence of a call to other_libc_func
-  # indicates that we will need libc_func linked in as well, so that is what the
-  # deps_info.json entry should contain.
-  #
-  # TODO: Move all __deps from src/library*.js to deps_info.json, and use that single source of info
-  #       both here and in the JS compiler.
-  deps_info = json.loads(open(shared.path_from_root('src', 'deps_info.json')).read())
   added = set()
 
   def add_back_deps(need):
     more = False
-    for ident, deps in deps_info.items():
+    for ident, deps in deps_info.deps_info.items():
       if ident in need.undefs and ident not in added:
         added.add(ident)
         more = True
@@ -1488,7 +1425,7 @@ def calculate(temp_files, cxx, forced, stdout_=None, stderr_=None):
   # and must assume all of deps_info must be exported. Note that this might cause
   # warnings on exports that do not exist.
   if only_forced:
-    for key, value in deps_info.items():
+    for key, value in deps_info.deps_info.items():
       for dep in value:
         shared.Settings.EXPORTED_FUNCTIONS.append(mangle_c_symbol_name(dep))
 
@@ -1587,7 +1524,6 @@ def calculate(temp_files, cxx, forced, stdout_=None, stderr_=None):
         add_library(system_libs_map['libunwind'])
     if shared.Settings.MALLOC != 'none':
       add_library(system_libs_map['libmalloc'])
-    add_library(system_libs_map['libpthread'])
     if shared.Settings.STANDALONE_WASM:
       add_library(system_libs_map['libstandalonewasm'])
     add_library(system_libs_map['libc_rt_wasm'])
@@ -1657,12 +1593,8 @@ class Ports(object):
   """
 
   @staticmethod
-  def get_lib_name(name):
-    return name + '.a'
-
-  @staticmethod
   def get_include_dir():
-    dirname = shared.Cache.get_path('include')
+    dirname = shared.Cache.get_include_dir()
     shared.safe_ensure_dirs(dirname)
     return dirname
 
@@ -1767,10 +1699,9 @@ class Ports(object):
     # clears the build, so that it is rebuilt from that source.
     local_ports = os.environ.get('EMCC_LOCAL_PORTS')
     if local_ports:
-      shared.Cache.acquire_cache_lock()
       logger.warning('using local ports: %s' % local_ports)
       local_ports = [pair.split('=', 1) for pair in local_ports.split(',')]
-      try:
+      with shared.Cache.lock():
         for local in local_ports:
           if name == local[0]:
             path = local[1]
@@ -1790,8 +1721,6 @@ class Ports(object):
               shutil.copytree(path, target)
               Ports.clear_project_build(name)
             return
-      finally:
-        shared.Cache.release_cache_lock()
 
     if is_tarbz2:
       fullpath = fullname + '.tar.bz2'
@@ -1861,20 +1790,15 @@ class Ports(object):
         z = tarfile.open(fullpath, 'r:gz')
       else:
         z = zipfile.ZipFile(fullpath, 'r')
-      try:
-        cwd = os.getcwd()
-        os.chdir(fullname)
+      with utils.chdir(fullname):
         z.extractall()
-      finally:
-        os.chdir(cwd)
 
       State.unpacked = True
 
     # main logic. do this under a cache lock, since we don't want multiple jobs to
     # retrieve the same port at once
 
-    shared.Cache.acquire_cache_lock()
-    try:
+    with shared.Cache.lock():
       if not os.path.exists(fullpath):
         retrieve()
 
@@ -1891,8 +1815,6 @@ class Ports(object):
       if State.unpacked:
         # we unpacked a new version, clear the build in the cache
         Ports.clear_project_build(name)
-    finally:
-      shared.Cache.release_cache_lock()
 
   @staticmethod
   def clear_project_build(name):
@@ -1973,7 +1895,7 @@ def build_port(port_name, settings):
 def add_ports_cflags(args, settings):
   # Legacy SDL1 port is not actually a port at all but builtin
   if settings.USE_SDL == 1:
-    args += ['-Xclang', '-isystem' + shared.path_from_root('system', 'include', 'SDL')]
+    args += ['-Xclang', '-iwithsysroot/include/SDL']
 
   needed = get_needed_ports(settings)
 
@@ -1990,3 +1912,45 @@ def show_ports():
   print('Available ports:')
   for port in ports.ports:
     print('   ', port.show())
+
+
+# Once we require python 3.8 we can use shutil.copytree with
+# dirs_exist_ok=True and remove this function.
+def copytree_exist_ok(src, dest):
+  with utils.chdir(src):
+    for dirname, dirs, files in os.walk('.'):
+      destdir = os.path.join(dest, dirname)
+      utils.safe_ensure_dirs(destdir)
+      for f in files:
+        shared.safe_copy(os.path.join(src, dirname, f), os.path.join(destdir, f))
+
+
+def install_system_headers():
+  install_dirs = {
+    ('include',): '',
+    ('lib', 'compiler-rt', 'include'): '',
+    ('lib', 'libunwind', 'include'): '',
+    ('lib', 'libc', 'musl', 'arch', 'emscripten'): '',
+    ('lib', 'libc', 'musl', 'include'): '',
+    ('lib', 'libcxx', 'include'): os.path.join('c++', 'v1'),
+    ('lib', 'libcxxabi', 'include'): os.path.join('c++', 'v1'),
+  }
+
+  target_include_dir = shared.Cache.get_include_dir()
+  for src, dest in install_dirs.items():
+    src = shared.path_from_root('system', *src)
+    dest = os.path.join(target_include_dir, dest)
+    copytree_exist_ok(src, dest)
+
+  # Create a stamp file that signal the the header have been installed
+  # Removing this file, or running `emcc --clear-cache` or running
+  # `./embuilder build sysroot --force` will cause the re-installation of
+  # the system headers.
+  stamp = shared.Cache.get_path('sysroot_install.stamp')
+  with open(stamp, 'w') as f:
+    f.write('x')
+  return stamp
+
+
+def ensure_sysroot():
+  shared.Cache.get('sysroot_install.stamp', install_system_headers, what='system headers')

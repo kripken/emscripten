@@ -212,7 +212,8 @@ var LibraryManager = {
       }
     }
 
-    // apply synonyms. these are typically not speed-sensitive, and doing it this way makes it possible to not include hacks in the compiler
+    // apply synonyms. these are typically not speed-sensitive, and doing it
+    // this way makes it possible to not include hacks in the compiler
     // (and makes it simpler to switch between SDL versions, fastcomp and non-fastcomp, etc.).
     var lib = LibraryManager.library;
     libloop: for (var x in lib) {
@@ -233,22 +234,33 @@ var LibraryManager = {
         }
         if (!isNaN(target)) continue; // This is a number, and so cannot be an alias target.
         if (typeof lib[target] === 'undefined' || typeof lib[target] === 'function') {
-          // When functions are aliased, the alias target must provide a signature for the function so that an efficient form of forwarding can be implemented.
-          // Primarily read the signature on the alias, and secondarily on the target.
+          // When functions are aliased, a signature for the function must be
+          // provided so that an efficient form of forwarding can be
+          // implemented.
           function testStringType(sig) {
             if (typeof lib[sig] !== 'undefined' && typeof typeof lib[sig] !== 'string') {
               error(sig + ' should be a string! (was ' + typeof lib[sig]);
             }
           }
-          testStringType(x + '__sig');
-          testStringType(target + '__sig');
-          if (typeof lib[x + '__sig'] === 'string' && typeof lib[target + '__sig'] === 'string' && lib[x + '__sig'] != lib[target + '__sig']) {
-            error(x + '__sig (' + lib[x + '__sig'] + ')  differs from ' + target + '__sig (' + lib[target + '__sig'] + ')');
+          var aliasSig = x + '__sig';
+          var targetSig = target + '__sig';
+          testStringType(aliasSig);
+          testStringType(targetSig);
+          if (typeof lib[aliasSig] === 'string' && typeof lib[targetSig] === 'string' && lib[aliasSig] != lib[targetSig]) {
+            error(aliasSig + ' (' + lib[aliasSig] + ')  differs from ' + targetSig + ' (' + lib[targetSig] + ')');
           }
 
-          var sig = lib[x + '__sig'] || lib[target + '__sig'];
+          var sig = lib[aliasSig] || lib[targetSig];
           if (typeof sig !== 'string') {
-            error('Function ' + x + ' aliases to target function ' + target + ', but neither the alias or the target provide a signature. Please add a ' + target + "__sig: 'vifj...' annotation or a " + x + "__sig: 'vifj...' annotation to describe the type of function forwarding that is needed!");
+            error('Function ' + x + ' aliases to target function ' + target + ', but neither the alias or the target provide a signature. Please add a ' + targetSig + ": 'vifj...' annotation or a " + aliasSig + ": 'vifj...' annotation to describe the type of function forwarding that is needed!");
+          }
+
+          // If only one of the target or the alias specifies a sig then copy
+          // this signature to the other.
+          if (!lib[aliasSig]) {
+            lib[aliasSig] = lib[targetSig];
+          } else if (!lib[targetSig]) {
+            lib[targetSig] = lib[aliasSig];
           }
 
           if (typeof lib[target] !== 'function') {
@@ -426,6 +438,14 @@ function exportRuntime() {
     'abort',
   ];
 
+  if (USE_OFFSET_CONVERTER) {
+    runtimeElements.push('WasmOffsetConverter');
+  }
+
+  if (LOAD_SOURCE_MAP) {
+    runtimeElements.push('WasmSourceMap');
+  }
+
   // Add JS library elements such as FS, GL, ENV, etc. These are prefixed with
   // '$ which indicates they are JS methods.
   for (var ident in LibraryManager.library) {
@@ -464,8 +484,7 @@ function exportRuntime() {
     // In pthreads mode, the following functions always need to be exported to
     // Module for closure compiler, and also for MODULARIZE (so worker.js can
     // access them).
-    var threadExports = ['PThread', '_pthread_self'];
-    threadExports.push('wasmMemory');
+    var threadExports = ['PThread', 'wasmMemory'];
     if (!MINIMAL_RUNTIME) {
       threadExports.push('ExitStatus');
     }

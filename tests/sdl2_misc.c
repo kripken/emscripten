@@ -13,6 +13,8 @@
 
 #include <emscripten.h>
 
+#include "report_result.h"
+
 int main(int argc, char *argv[])
 {
     SDL_Window *window;
@@ -49,7 +51,6 @@ int main(int argc, char *argv[])
 
     SDL_DestroyWindow(window);
     SDL_Quit();
-    REPORT_RESULT(1);
 
     return 0;
 }
