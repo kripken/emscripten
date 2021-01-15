@@ -1,5 +1,6 @@
 #include <emscripten.h>
 #include <emscripten/wasm_worker.h>
+#include <assert.h>
 
 // Test emscripten_create_wasm_worker() and emscripten_current_thread_is_wasm_worker() functions
 
