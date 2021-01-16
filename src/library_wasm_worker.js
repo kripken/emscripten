@@ -177,7 +177,7 @@ mergeInto(LibraryManager.library, {
     });
   },
 
-  _emscripten_atomics_wait_states: "['ok', 'not-equal', 'timed-out']",
+  _emscripten_atomic_wait_states: "['ok', 'not-equal', 'timed-out']",
 
 // Chrome 87 (and hence Edge 87) shipped Atomics.waitAsync (https://www.chromestatus.com/feature/6243382101803008)
 // Firefox Nightly 86.0a1 (2021-01-15) does not yet have it, https://bugzilla.mozilla.org/show_bug.cgi?id=1467846
@@ -186,7 +186,7 @@ mergeInto(LibraryManager.library, {
   // Partially polyfill Atomics.waitAsync() if not available in the browser.
   // https://github.com/tc39/proposal-atomics-wait-async/blob/master/PROPOSAL.md
   // This polyfill performs polling with setTimeout() to observe a change in the target memory location.
-  emscripten_atomics_async_wait__postset: "if (!Atomics['waitAsync']) { \n"+
+  emscripten_atomic_wait_async__postset: "if (!Atomics['waitAsync']) { \n"+
 "var __Atomics_waitAsyncAddresses = [/*[i32a, index, value, maxWaitMilliseconds, promiseResolve]*/];\n"+
 "function __Atomics_pollWaitAsyncAddresses() {\n"+
 "  var now = performance.now();\n"+
@@ -220,12 +220,12 @@ mergeInto(LibraryManager.library, {
 "}",
 #endif
 
-  emscripten_atomics_async_wait__deps: ['_emscripten_atomics_wait_states'],
-  emscripten_atomics_async_wait: function(addr, val, asyncWaitFinished, userData, maxWaitMilliseconds) {
+  emscripten_atomic_wait_async__deps: ['_emscripten_atomic_wait_states'],
+  emscripten_atomic_wait_async: function(addr, val, asyncWaitFinished, userData, maxWaitMilliseconds) {
     var wait = Atomics['waitAsync'](HEAPU32, addr >> 2, val, maxWaitMilliseconds);
-    if (wait.value) return __emscripten_atomics_wait_states.indexOf(wait.value);
+    if (wait.value) return __emscripten_atomic_wait_states.indexOf(wait.value);
     wait.then((value) => {
-      {{{ makeDynCall('viiii', 'asyncWaitFinished') }}}(addr, val, __emscripten_atomics_wait_states.indexOf(value), userData);
+      {{{ makeDynCall('viiii', 'asyncWaitFinished') }}}(addr, val, __emscripten_atomic_wait_states.indexOf(value), userData);
     });
     // Implicit return 0 /*ATOMICS_WAIT_OK*/;
   },
@@ -262,10 +262,10 @@ mergeInto(LibraryManager.library, {
     tryAcquireLock();
   },
 
-  // The dependency emscripten_semaphore_async_acquire -> emscripten_atomics_async_wait is artificial
+  // The dependency emscripten_semaphore_async_acquire -> emscripten_atomic_wait_async is artificial
   // so that we get the waitAsync polyfill emitted if code calls emscripten_semaphore_async_acquire() but
-  // not emscripten_atomics_async_wait().
-  emscripten_semaphore_async_acquire__deps: ['emscripten_atomics_async_wait'],
+  // not emscripten_atomic_wait_async().
+  emscripten_semaphore_async_acquire__deps: ['emscripten_atomic_wait_async'],
   emscripten_semaphore_async_acquire: function(sem, num, asyncWaitFinished, userData, maxWaitMilliseconds) {
     function dispatch(idx, ret) {
       setTimeout(() => {

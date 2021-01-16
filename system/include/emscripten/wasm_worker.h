@@ -49,34 +49,49 @@ void emscripten_wasm_worker_post_function_sig(emscripten_wasm_worker_t id, void 
 #define ATOMICS_WAIT_NOT_EQUAL 1
 #define ATOMICS_WAIT_TIMED_OUT 2
 
-// If the given memory address contains value 'expectedValue', puts the calling
-// thread to sleep to wait for that address to be notified.
+// Issues the wasm 'memory.atomic.wait32' instruction:
+// If the given memory address contains value 'expectedValue', puts the calling thread to sleep to wait for that address to be notified.
 // Returns one of the ATOMICS_WAIT_* return codes.
-static inline __attribute__((always_inline)) ATOMICS_WAIT_RESULT_T emscripten_atomic_wait_i32(int32_t *addr, int expectedValue, int64_t maxWaitNanoseconds)
+// NOTE: This function takes in the wait value in int64_t nanosecond units. Pass in maxWaitNanoseconds = -1 to wait infinitely long.
+static inline __attribute__((always_inline)) ATOMICS_WAIT_RESULT_T emscripten_wasm_wait_i32(int32_t *addr, int expectedValue, int64_t maxWaitNanoseconds)
 {
 	return __builtin_wasm_memory_atomic_wait32(addr, expectedValue, maxWaitNanoseconds);
 }
 
-static inline __attribute__((always_inline)) ATOMICS_WAIT_RESULT_T emscripten_atomic_wait_i64(int64_t *addr, int64_t expectedValue, int64_t maxWaitNanoseconds)
+// Issues the wasm 'memory.atomic.wait64' instruction:
+// If the given memory address contains value 'expectedValue', puts the calling thread to sleep to wait for that address to be notified.
+// Returns one of the ATOMICS_WAIT_* return codes.
+// NOTE: This function takes in the wait value in int64_t nanosecond units. Pass in maxWaitNanoseconds = -1 to wait infinitely long.
+static inline __attribute__((always_inline)) ATOMICS_WAIT_RESULT_T emscripten_wasm_wait_i64(int64_t *addr, int64_t expectedValue, int64_t maxWaitNanoseconds)
 {
 	return __builtin_wasm_memory_atomic_wait64(addr, expectedValue, maxWaitNanoseconds);
 }
 
 #define EMSCRIPTEN_NOTIFY_ALL_WAITERS (-1LL)
 
+// Issues the wasm 'memory.atomic.notify' instruction:
 // Notifies the given number of threads waiting on a location.
 // Pass count == EMSCRIPTEN_NOTIFY_ALL_WAITERS to notify all waiters on the given location.
 // Returns the number of threads that were woken up.
-static inline __attribute__((always_inline)) int64_t emscripten_atomic_notify(int32_t *addr, int64_t count)
+// Note: this function is used to notify both waiters waiting on an i32 and i64 addresses.
+static inline __attribute__((always_inline)) int64_t emscripten_wasm_notify(int32_t *addr, int64_t count)
 {
 	return __builtin_wasm_memory_atomic_notify(addr, count);
 }
 
-ATOMICS_WAIT_RESULT_T emscripten_atomic_async_wait(volatile void *addr,
-                                                    uint32_t val,
-                                                    void (*asyncWaitFinished)(volatile void *addr, uint32_t val, ATOMICS_WAIT_RESULT_T waitResult, void *userData),
-                                                    void *userData,
-                                                    int64_t maxWaitNanoseconds);
+// Issues the JavaScript 'Atomics.waitAsync' instruction:
+// performs an asynchronous wait operation on the main thread. If the given address contains val, issues a
+// deferred wait that will invoke the specified callback function 'asyncWaitFinished' once that
+// address has been notified by another thread.
+// NOTE: Unlike functions emscripten_wasm_wait_i32() and emscripten_wasm_wait_i64() which take in the
+// wait timeout parameter as int64 nanosecond units, this function takes in the wait timeout parameter
+// as double millisecond units. See https://github.com/WebAssembly/threads/issues/175 for more information.
+// Pass in maxWaitMilliseconds == __builtin_inf() to wait for infinitely long.
+ATOMICS_WAIT_RESULT_T emscripten_atomic_wait_async(int32_t *addr,
+                                                   uint32_t val,
+                                                   void (*asyncWaitFinished)(int32_t *addr, uint32_t val, ATOMICS_WAIT_RESULT_T waitResult, void *userData),
+                                                   void *userData,
+                                                   double maxWaitMilliseconds);
 
 // Sleeps the calling wasm worker for the given nanoseconds. Calling this function on the main thread
 // either results in a TypeError exception (Firefox), or a silent return without waiting (Chrome),

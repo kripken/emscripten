@@ -4932,6 +4932,24 @@ window.close = function() {
                expected='0',
                args=['-s', 'WASM_WORKERS=1', '-s', 'MINIMAL_RUNTIME=1'])
 
+  # Tests emscripten_wasm_wait_i32() and emscripten_wasm_notify() functions.
+  def test_wasm_worker_wait32_notify(self):
+    self.btest(path_from_root('tests', 'wasm_worker', 'wait32_notify.c'),
+               expected='2',
+               args=['-s', 'WASM_WORKERS=1', '-s', 'MINIMAL_RUNTIME=1'])
+
+  # Tests emscripten_wasm_wait_i64() and emscripten_wasm_notify() functions.
+  def test_wasm_worker_wait64_notify(self):
+    self.btest(path_from_root('tests', 'wasm_worker', 'wait64_notify.c'),
+               expected='2',
+               args=['-s', 'WASM_WORKERS=1', '-s', 'MINIMAL_RUNTIME=1'])
+
+  # Tests emscripten_atomic_wait_async() function.
+  def test_wasm_worker_wait_async(self):
+    self.btest(path_from_root('tests', 'wasm_worker', 'wait_async.c'),
+               expected='0',
+               args=['-s', 'WASM_WORKERS=1', '-s', 'MINIMAL_RUNTIME=1'])
+
   @no_firefox('no 4GB support yet')
   def test_zzz_zzz_4GB(self):
     # TODO Convert to an actual browser test when it reaches stable.
