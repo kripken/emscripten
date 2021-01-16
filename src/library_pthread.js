@@ -1007,7 +1007,7 @@ var LibraryPThread = {
   emscripten_futex_wait: function(addr, val, timeout) {
     if (addr <= 0 || addr > HEAP8.length || addr&3 != 0) return -{{{ cDefine('EINVAL') }}};
     // We can do a normal blocking wait anywhere but on the main browser thread.
-    if (ENVIRONMENT_IS_WORKER) {
+    if (!ENVIRONMENT_IS_WEB) {
 #if PTHREADS_PROFILING
       PThread.setThreadStatusConditional(_pthread_self(), {{{ cDefine('EM_THREAD_STATUS_RUNNING') }}}, {{{ cDefine('EM_THREAD_STATUS_WAITFUTEX') }}});
 #endif
