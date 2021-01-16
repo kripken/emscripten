@@ -2322,8 +2322,6 @@ def post_link(options, in_wasm, wasm_target, target):
       worker_output = os.path.join(target_dir, shared.Settings.WASM_WORKER_FILE)
       with open(worker_output, 'w') as f:
         f.write(shared.read_and_preprocess(shared.path_from_root('src', 'wasm_worker.js'), expand_macros=True))
-#        shared.Settings.WASM_WORKER_SCRIPT_AS_EMBEDDED_JS_STRING = shared.read_and_preprocess(shared.path_from_root('src', 'wasm_worker.js'), expand_macros=True)
-#        f.write(shared.Settings.WASM_WORKER_SCRIPT_AS_EMBEDDED_JS_STRING)
 
       # Minify the wasm_worker.js file in optimized builds
       if (shared.Settings.OPT_LEVEL >= 1 or shared.Settings.SHRINK_LEVEL >= 1) and not shared.Settings.DEBUG_LEVEL:

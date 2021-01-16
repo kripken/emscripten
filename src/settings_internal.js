@@ -113,12 +113,6 @@ var PTHREAD_WORKER_FILE = '';
 // name of the file containing the Wasm Worker *.ww.js, if relevant
 var WASM_WORKER_FILE = '';
 
-// If WASM_WORKERS=2 is used, no separate a.ww.js script will
-// be used to load up the Wasm Worker, but insteas the bootstrap
-// script will be embedded directly into the main .JS file as a Blob
-// URL.
-//// var WASM_WORKER_SCRIPT_AS_EMBEDDED_JS_STRING = '';
-
 // Base URL the source mapfile, if relevant
 var SOURCE_MAP_BASE = '';
 
