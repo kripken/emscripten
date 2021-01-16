@@ -56,7 +56,7 @@ int main()
   addr = 1;
 
   console_log("Async waiting on address with unexpected value should return 'not-equal'");
-  ATOMICS_WAIT_RESULT_T ret = emscripten_atomic_wait_async((int32_t*)&addr, 2, asyncWaitFinished, (void*)42, __builtin_inf());
+  ATOMICS_WAIT_RESULT_T ret = emscripten_atomic_wait_async((int32_t*)&addr, 2, asyncWaitFinished, (void*)42, EMSCRIPTEN_WAIT_ASYNC_INFINITY);
   assert(ret == ATOMICS_WAIT_NOT_EQUAL);
 
   console_log("Waiting on address with unexpected value should return 'not-equal' also if timeout==0");
@@ -72,6 +72,6 @@ int main()
   assert(ret == ATOMICS_WAIT_OK);
 
   console_log("Waiting for infinitely long should return 'ok' (and return 'ok' in second call to asyncWaitFinished)");
-  ret = emscripten_atomic_wait_async((int32_t*)&addr, 1, asyncWaitFinished, (void*)42, __builtin_inf());
+  ret = emscripten_atomic_wait_async((int32_t*)&addr, 1, asyncWaitFinished, (void*)42, EMSCRIPTEN_WAIT_ASYNC_INFINITY);
   assert(ret == ATOMICS_WAIT_OK);
 }

@@ -79,6 +79,8 @@ static inline __attribute__((always_inline)) int64_t emscripten_wasm_notify(int3
 	return __builtin_wasm_memory_atomic_notify(addr, count);
 }
 
+#define EMSCRIPTEN_WAIT_ASYNC_INFINITY __builtin_inf()
+
 // Issues the JavaScript 'Atomics.waitAsync' instruction:
 // performs an asynchronous wait operation on the main thread. If the given address contains val, issues a
 // deferred wait that will invoke the specified callback function 'asyncWaitFinished' once that
@@ -86,7 +88,7 @@ static inline __attribute__((always_inline)) int64_t emscripten_wasm_notify(int3
 // NOTE: Unlike functions emscripten_wasm_wait_i32() and emscripten_wasm_wait_i64() which take in the
 // wait timeout parameter as int64 nanosecond units, this function takes in the wait timeout parameter
 // as double millisecond units. See https://github.com/WebAssembly/threads/issues/175 for more information.
-// Pass in maxWaitMilliseconds == __builtin_inf() to wait for infinitely long.
+// Pass in maxWaitMilliseconds == EMSCRIPTEN_WAIT_ASYNC_INFINITY (==__builtin_inf()) to wait infinitely long.
 ATOMICS_WAIT_RESULT_T emscripten_atomic_wait_async(int32_t *addr,
                                                    uint32_t val,
                                                    void (*asyncWaitFinished)(int32_t *addr, uint32_t val, ATOMICS_WAIT_RESULT_T waitResult, void *userData),
@@ -115,8 +117,6 @@ int emscripten_atomics_is_lock_free(int byteWidth);
 
 // Use with syntax "emscripten_lock_t l = EMSCRIPTEN_LOCK_T_STATIC_INITIALIZER;"
 #define EMSCRIPTEN_LOCK_T_STATIC_INITIALIZER 0
-
-#define EMSCRIPTEN_WAIT_INFINITY __builtin_inf()
 
 void emscripten_lock_init(emscripten_lock_t *lock);
 
