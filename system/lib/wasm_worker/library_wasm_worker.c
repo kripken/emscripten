@@ -55,7 +55,7 @@ void emscripten_lock_waitinf_acquire(emscripten_lock_t *lock) // only in worker
 	{
 		val = emscripten_atomic_cas_u32((void*)lock, 0, 1);
 		if (val)
-			emscripten_wasm_wait_i32((int32_t*)lock, val, EMSCRIPTEN_WAIT_INFINITY);
+			emscripten_wasm_wait_i32((int32_t*)lock, val, -1);
 	} while(val);
 }
 
@@ -113,7 +113,7 @@ int emscripten_semaphore_waitinf_acquire(emscripten_semaphore_t *sem, int num)
 	{
 		while(val < num)
 		{
-			emscripten_wasm_wait_i32((int32_t*)sem, val, EMSCRIPTEN_WAIT_INFINITY);
+			emscripten_wasm_wait_i32((int32_t*)sem, val, -1);
 			val = emscripten_atomic_load_u32((void*)sem);
 		}
 		int ret = (int)emscripten_atomic_cas_u32((void*)sem, val, val - num);
@@ -138,7 +138,7 @@ void emscripten_condvar_waitinf(emscripten_condvar_t *condvar, emscripten_lock_t
 {
 	int val = emscripten_atomic_load_u32((void*)condvar);
 	emscripten_lock_release(lock);
-	emscripten_wasm_wait_i32((int32_t*)condvar, val, EMSCRIPTEN_WAIT_INFINITY);
+	emscripten_wasm_wait_i32((int32_t*)condvar, val, -1);
 	emscripten_lock_waitinf_acquire(lock);
 }
 

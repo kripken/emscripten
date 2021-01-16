@@ -1,3 +1,6 @@
+// N.B. The contents of this file are duplicated in src/library_wasm_workers.js
+// in variable "_wasmWorkerBlobUrl" (where the contents are pre-minified) If
+// doing any changes to this file, be sure to update the contents there too.
 onmessage = function(d) {
 	// The first message sent to the Worker is always the bootstrap message.
 	// Drop this message listener, it served its purpose of bootstrapping
