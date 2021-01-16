@@ -89,8 +89,11 @@ void emscripten_wasm_worker_sleep(int64_t nanoseconds);
 // navigator.hardwareConcurrency is supported, but there is only one logical thread of concurrency available)
 int emscripten_navigator_hardware_concurrency(void);
 
-// Returns true if the given memory access width can be accessed atomically. Generally will return true
-// on 1, 2, 4 and 8 byte accesses.
+// Returns the value of the expression "Atomics.isLockFree(byteWidth)": true if the given memory access
+// width can be accessed atomically, and false otherwise. Generally will return true
+// on 1, 2 and 4 byte accesses. On 8 byte accesses, behavior differs across browsers, see
+//  - https://bugzilla.mozilla.org/show_bug.cgi?id=1246139
+//  - https://bugs.chromium.org/p/chromium/issues/detail?id=1167449
 int emscripten_atomics_is_lock_free(int byteWidth);
 
 #define emscripten_lock_t volatile uint32_t
