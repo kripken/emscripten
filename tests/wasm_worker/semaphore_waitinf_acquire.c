@@ -32,8 +32,8 @@ void worker_main()
   emscripten_atomic_add_u32((void*)&threadCounter, 1);
 
   // Increment semaphore to signal that this thread has finished.
-  emscripten_semaphore_release(&threadsCompleted, 1);
   console_log("worker_main: thread completed");
+  emscripten_semaphore_release(&threadsCompleted, 1);
 }
 
 void control_thread()
@@ -63,7 +63,7 @@ void control_thread()
 
   // Wait until we have the final 3 threads completed their run.
   console_log("control_thread: waiting for the last three threads to finish");
-  emscripten_semaphore_waitinf_acquire(&threadsCompleted, 1);
+  emscripten_semaphore_waitinf_acquire(&threadsCompleted, 3);
   console_log("control_thread: threads finished");
   assert(threadCounter == 6);
 
