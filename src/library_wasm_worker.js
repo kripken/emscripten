@@ -180,13 +180,16 @@ mergeInto(LibraryManager.library, {
   _emscripten_atomic_wait_states: "['ok', 'not-equal', 'timed-out']",
 
 // Chrome 87 (and hence Edge 87) shipped Atomics.waitAsync (https://www.chromestatus.com/feature/6243382101803008)
+// However its implementation is faulty: https://bugs.chromium.org/p/chromium/issues/detail?id=1167541
 // Firefox Nightly 86.0a1 (2021-01-15) does not yet have it, https://bugzilla.mozilla.org/show_bug.cgi?id=1467846
 // And at the time of writing, no other browser has it either.
-#if MIN_EDGE_VERSION < 87 || MIN_CHROME_VERSION < 87 || MIN_SAFARI_VERSION != TARGET_NOT_SUPPORTED || MIN_FIREFOX_VERSION != TARGET_NOT_SUPPORTED || ENVIRONMENT_MAY_BE_NODE
+#if MIN_EDGE_VERSION != TARGET_NOT_SUPPORTED || MIN_CHROME_VERSION != TARGET_NOT_SUPPORTED || MIN_SAFARI_VERSION != TARGET_NOT_SUPPORTED || MIN_FIREFOX_VERSION != TARGET_NOT_SUPPORTED || ENVIRONMENT_MAY_BE_NODE
   // Partially polyfill Atomics.waitAsync() if not available in the browser.
+  // Also always polyfill in Chrome-based browsers, where Atomics.waitAsync is broken,
+  // see https://bugs.chromium.org/p/chromium/issues/detail?id=1167541
   // https://github.com/tc39/proposal-atomics-wait-async/blob/master/PROPOSAL.md
   // This polyfill performs polling with setTimeout() to observe a change in the target memory location.
-  emscripten_atomic_wait_async__postset: "if (!Atomics['waitAsync']) { \n"+
+  emscripten_atomic_wait_async__postset: "if (!Atomics['waitAsync'] || navigator.userAgent.indexOf('Chrome') != -1) { \n"+
 "var __Atomics_waitAsyncAddresses = [/*[i32a, index, value, maxWaitMilliseconds, promiseResolve]*/];\n"+
 "function __Atomics_pollWaitAsyncAddresses() {\n"+
 "  var now = performance.now();\n"+
@@ -206,6 +209,9 @@ mergeInto(LibraryManager.library, {
 "    setTimeout(__Atomics_pollWaitAsyncAddresses, 10);\n"+
 "  }\n"+
 "}\n"+
+#if ASSERTIONS
+"  if (!ENVIRONMENT_IS_WASM_WORKER) console.error('Current environment does not support Atomics.waitAsync(): polyfilling it, but this is going to be suboptimal.');\n"+
+#endif
 "Atomics['waitAsync'] = function(i32a, index, value, maxWaitMilliseconds) {\n"+
 "  var val = Atomics.load(i32a, index);\n"+
 "  if (val != value) return { async: false, value: 'not-equal' };\n"+
@@ -213,21 +219,24 @@ mergeInto(LibraryManager.library, {
 "  var maxWaitMilliseconds = performance.now() + (maxWaitMilliseconds || Infinity);\n"+
 "  var promiseResolve;\n"+
 "  var promise = new Promise((resolve) => { promiseResolve = resolve; });\n"+
-"  if (!__Atomics_waitAsyncAddresses.length) setTimeout(__Atomics_pollWaitAsyncAddresses, 10);\n"+
+"  if (!__Atomics_waitAsyncAddresses[0]) setTimeout(__Atomics_pollWaitAsyncAddresses, 10);\n"+
 "  __Atomics_waitAsyncAddresses.push([i32a, index, value, maxWaitMilliseconds, promiseResolve]);\n"+
-"  return promise;\n"+
+"  return { async: true, value: promise };\n"+
 "};\n"+
 "}",
 #endif
 
   emscripten_atomic_wait_async__deps: ['_emscripten_atomic_wait_states'],
   emscripten_atomic_wait_async: function(addr, val, asyncWaitFinished, userData, maxWaitMilliseconds) {
-    var wait = Atomics['waitAsync'](HEAPU32, addr >> 2, val, maxWaitMilliseconds);
-    if (wait.value) return __emscripten_atomic_wait_states.indexOf(wait.value);
-    wait.then((value) => {
-      {{{ makeDynCall('viiii', 'asyncWaitFinished') }}}(addr, val, __emscripten_atomic_wait_states.indexOf(value), userData);
-    });
-    // Implicit return 0 /*ATOMICS_WAIT_OK*/;
+    var wait = Atomics['waitAsync'](HEAP32, addr >> 2, val, maxWaitMilliseconds);
+    if (wait.async) {
+      wait.value.then((value) => {
+        {{{ makeDynCall('viiii', 'asyncWaitFinished') }}}(addr, val, __emscripten_atomic_wait_states.indexOf(value), userData);
+      });
+      // Implicit return 0 /*ATOMICS_WAIT_OK*/;
+    } else {
+      return __emscripten_atomic_wait_states.indexOf(wait.value);
+    }
   },
 
   emscripten_navigator_hardware_concurrency: function() {

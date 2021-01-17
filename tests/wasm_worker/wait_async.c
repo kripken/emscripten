@@ -25,25 +25,35 @@ char stack[1024];
 
 int numCalled = 0;
 
-void asyncWaitFinished(int32_t *ptr, uint32_t val, ATOMICS_WAIT_RESULT_T waitResult, void *userData)
+void asyncWaitShouldTimeout(int32_t *ptr, uint32_t val, ATOMICS_WAIT_RESULT_T waitResult, void *userData)
 {
+  console_log("main: asyncWaitShouldTimeout");
   ++numCalled;
+  assert(numCalled == 1);
+  assert(ptr == &addr);
+  assert(val == 1);
+  assert(userData == (void*)42);
+  assert(waitResult == ATOMICS_WAIT_TIMED_OUT);
+}
+
+void asyncWaitFinishedShouldNotBeCalled(int32_t *ptr, uint32_t val, ATOMICS_WAIT_RESULT_T waitResult, void *userData)
+{
+  assert(0); // We should not reach here
+}
+
+void asyncWaitFinishedShouldBeOk(int32_t *ptr, uint32_t val, ATOMICS_WAIT_RESULT_T waitResult, void *userData)
+{
   console_log("main: asyncWaitFinished");
   assert(ptr == &addr);
   assert(val == 1);
   assert(userData == (void*)42);
-  if (numCalled == 1) assert(waitResult == ATOMICS_WAIT_TIMED_OUT);
-  else if (numCalled == 2)
-  {
-    assert(waitResult == ATOMICS_WAIT_OK);
-
-    console_log("test finished");
-
+  ++numCalled;
+  assert(numCalled == 2);
+  assert(waitResult == ATOMICS_WAIT_OK);
+  console_log("test finished");
 #ifdef REPORT_RESULT
-    REPORT_RESULT(0);
+  REPORT_RESULT(0);
 #endif
-  }
-  else assert(0);
 }
 
 int main()
@@ -56,22 +66,22 @@ int main()
   addr = 1;
 
   console_log("Async waiting on address with unexpected value should return 'not-equal'");
-  ATOMICS_WAIT_RESULT_T ret = emscripten_atomic_wait_async((int32_t*)&addr, 2, asyncWaitFinished, (void*)42, EMSCRIPTEN_WAIT_ASYNC_INFINITY);
+  ATOMICS_WAIT_RESULT_T ret = emscripten_atomic_wait_async((int32_t*)&addr, 2, asyncWaitFinishedShouldNotBeCalled, (void*)42, EMSCRIPTEN_WAIT_ASYNC_INFINITY);
   assert(ret == ATOMICS_WAIT_NOT_EQUAL);
 
   console_log("Waiting on address with unexpected value should return 'not-equal' also if timeout==0");
-  ret = emscripten_atomic_wait_async((int32_t*)&addr, 2, asyncWaitFinished, (void*)42, 0);
+  ret = emscripten_atomic_wait_async((int32_t*)&addr, 2, asyncWaitFinishedShouldNotBeCalled, (void*)42, 0);
   assert(ret == ATOMICS_WAIT_NOT_EQUAL);
 
   console_log("Waiting for 0 milliseconds should return 'timed-out'");
-  ret = emscripten_atomic_wait_async((int32_t*)&addr, 1, asyncWaitFinished, (void*)42, 0);
+  ret = emscripten_atomic_wait_async((int32_t*)&addr, 1, asyncWaitFinishedShouldNotBeCalled, (void*)42, 0);
   assert(ret == ATOMICS_WAIT_TIMED_OUT);
 
   console_log("Waiting for >0 milliseconds should return 'ok' (but successfully time out in first call to asyncWaitFinished)");
-  ret = emscripten_atomic_wait_async((int32_t*)&addr, 1, asyncWaitFinished, (void*)42, 10);
+  ret = emscripten_atomic_wait_async((int32_t*)&addr, 1, asyncWaitShouldTimeout, (void*)42, 10);
   assert(ret == ATOMICS_WAIT_OK);
 
   console_log("Waiting for infinitely long should return 'ok' (and return 'ok' in second call to asyncWaitFinished)");
-  ret = emscripten_atomic_wait_async((int32_t*)&addr, 1, asyncWaitFinished, (void*)42, EMSCRIPTEN_WAIT_ASYNC_INFINITY);
+  ret = emscripten_atomic_wait_async((int32_t*)&addr, 1, asyncWaitFinishedShouldBeOk, (void*)42, EMSCRIPTEN_WAIT_ASYNC_INFINITY);
   assert(ret == ATOMICS_WAIT_OK);
 }
