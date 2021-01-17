@@ -284,10 +284,10 @@ function JSify(data, functionsOnly) {
       if (isFunction) {
         // Emit the body of a JS library function.
         var proxyingMode = LibraryManager.library[ident + '__proxy'];
-        if (proxyingMode && proxyingMode !== 'sync' && proxyingMode !== 'async') {
-          throw 'Invalid proxyingMode ' + ident + '__proxy: \'' + proxyingMode + '\' specified!';
-        }
         if (USE_PTHREADS && proxyingMode) {
+          if (proxyingMode !== 'sync' && proxyingMode !== 'async') {
+            throw 'Invalid proxyingMode ' + ident + '__proxy: \'' + proxyingMode + '\' specified!';
+          }
           var sync = proxyingMode === 'sync';
           assert(typeof original === 'function');
           contentText = modifyFunction(snippet, function(name, args, body) {
