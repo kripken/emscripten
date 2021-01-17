@@ -39,7 +39,7 @@ void worker_main()
   console_log("Test finished");
 
 #ifdef REPORT_RESULT
-  REPORT_RESULT(addr);
+  REPORT_RESULT(addr >> 32);
 #endif
 }
 
