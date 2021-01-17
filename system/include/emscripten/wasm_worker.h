@@ -126,10 +126,10 @@ EM_BOOL emscripten_lock_wait_acquire(emscripten_lock_t *lock, int64_t maxWaitNan
 void emscripten_lock_waitinf_acquire(emscripten_lock_t *lock);
 
 // main thread + worker, raise an event when the lock is acquired. If you use this API in Worker, you cannot run an infinite loop.
-ATOMICS_WAIT_RESULT_T emscripten_lock_async_acquire(emscripten_lock_t *lock,
-                                                    void (*asyncWaitFinished)(volatile void *addr, uint32_t val, ATOMICS_WAIT_RESULT_T waitResult, void *userData),
-                                                    void *userData,
-                                                    int64_t maxWaitNanoseconds);
+void emscripten_lock_async_acquire(emscripten_lock_t *lock,
+                                   void (*asyncWaitFinished)(volatile void *addr, uint32_t val, ATOMICS_WAIT_RESULT_T waitResult, void *userData),
+                                   void *userData,
+                                   double maxWaitMilliseconds);
 
 // Can be called on both main thread and in Workers.
 EM_BOOL emscripten_lock_try_acquire(emscripten_lock_t *lock);
@@ -152,7 +152,7 @@ void emscripten_semaphore_async_acquire(emscripten_semaphore_t *sem,
                                         int num,
                                         void (*asyncWaitFinished)(volatile void *addr, uint32_t idx, ATOMICS_WAIT_RESULT_T result, void *userData),
                                         void *userData,
-                                        int64_t maxWaitNanoseconds);
+                                        double maxWaitMilliseconds);
 
 // worker, sleep to acquire num instances. Returns idx that was acquired, or -1 if timed out unable to acquire.
 int emscripten_semaphore_wait_acquire(emscripten_semaphore_t *sem, int num, int64_t maxWaitNanoseconds);

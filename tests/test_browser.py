@@ -4914,6 +4914,24 @@ window.close = function() {
                expected='0',
                args=['-s', 'WASM_WORKERS=1', '-s', 'MINIMAL_RUNTIME=1'])
 
+  # Tests emscripten_wasm_wait_i32() and emscripten_wasm_notify() functions.
+  def test_wasm_worker_wait32_notify(self):
+    self.btest(path_from_root('tests', 'wasm_worker', 'wait32_notify.c'),
+               expected='2',
+               args=['-s', 'WASM_WORKERS=1', '-s', 'MINIMAL_RUNTIME=1'])
+
+  # Tests emscripten_wasm_wait_i64() and emscripten_wasm_notify() functions.
+  def test_wasm_worker_wait64_notify(self):
+    self.btest(path_from_root('tests', 'wasm_worker', 'wait64_notify.c'),
+               expected='2',
+               args=['-s', 'WASM_WORKERS=1', '-s', 'MINIMAL_RUNTIME=1'])
+
+  # Tests emscripten_atomic_wait_async() function.
+  def test_wasm_worker_wait_async(self):
+    self.btest(path_from_root('tests', 'wasm_worker', 'wait_async.c'),
+               expected='0',
+               args=['-s', 'WASM_WORKERS=1', '-s', 'MINIMAL_RUNTIME=1'])
+
   # Tests emscripten_lock_init(), emscripten_lock_waitinf_acquire() and emscripten_lock_release()
   def test_wasm_worker_lock_waitinf(self):
     self.btest(path_from_root('tests', 'wasm_worker', 'lock_waitinf_acquire.c'),
@@ -4932,21 +4950,9 @@ window.close = function() {
                expected='0',
                args=['-s', 'WASM_WORKERS=1', '-s', 'MINIMAL_RUNTIME=1'])
 
-  # Tests emscripten_wasm_wait_i32() and emscripten_wasm_notify() functions.
-  def test_wasm_worker_wait32_notify(self):
-    self.btest(path_from_root('tests', 'wasm_worker', 'wait32_notify.c'),
-               expected='2',
-               args=['-s', 'WASM_WORKERS=1', '-s', 'MINIMAL_RUNTIME=1'])
-
-  # Tests emscripten_wasm_wait_i64() and emscripten_wasm_notify() functions.
-  def test_wasm_worker_wait64_notify(self):
-    self.btest(path_from_root('tests', 'wasm_worker', 'wait64_notify.c'),
-               expected='2',
-               args=['-s', 'WASM_WORKERS=1', '-s', 'MINIMAL_RUNTIME=1'])
-
-  # Tests emscripten_atomic_wait_async() function.
-  def test_wasm_worker_wait_async(self):
-    self.btest(path_from_root('tests', 'wasm_worker', 'wait_async.c'),
+  # Tests emscripten_lock_async_acquire() function.
+  def test_wasm_worker_lock_wait2(self):
+    self.btest(path_from_root('tests', 'wasm_worker', 'lock_async_acquire.c'),
                expected='0',
                args=['-s', 'WASM_WORKERS=1', '-s', 'MINIMAL_RUNTIME=1'])
 

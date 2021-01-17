@@ -224,6 +224,13 @@ mergeInto(LibraryManager.library, {
 "  return { async: true, value: promise };\n"+
 "};\n"+
 "}",
+
+  // These dependencies are artificial, issued so that we still get the waitAsync polyfill emitted
+  // if code only calls emscripten_lock/semaphore_async_acquire()
+  // but not emscripten_atomic_wait_async() directly.
+  emscripten_lock_async_acquire__deps: ['emscripten_atomic_wait_async'],
+  emscripten_semaphore_async_acquire__deps: ['emscripten_atomic_wait_async'],
+
 #endif
 
   emscripten_atomic_wait_async__deps: ['_emscripten_atomic_wait_states'],
@@ -260,18 +267,14 @@ mergeInto(LibraryManager.library, {
         var wait = Atomics['waitAsync'](HEAPU32, lock >> 2, val, maxWaitMilliseconds);
       } while(wait.value === 'not-equal');
 #if ASSERTIONS
-      assert(wait.value === 'timed-out');
+      assert(wait.async || wait.value === 'timed-out');
 #endif
-      if (wait.value) dispatch(val, 2/*'timed-out'*/);
-      else wait.then(tryAcquireLock);
+      if (wait.async) wait.value.then(tryAcquireLock);
+      else dispatch(val, 2/*'timed-out'*/);
     }
     tryAcquireLock();
   },
 
-  // The dependency emscripten_semaphore_async_acquire -> emscripten_atomic_wait_async is artificial
-  // so that we get the waitAsync polyfill emitted if code calls emscripten_semaphore_async_acquire() but
-  // not emscripten_atomic_wait_async().
-  emscripten_semaphore_async_acquire__deps: ['emscripten_atomic_wait_async'],
   emscripten_semaphore_async_acquire: function(sem, num, asyncWaitFinished, userData, maxWaitMilliseconds) {
     function dispatch(idx, ret) {
       setTimeout(() => {
@@ -288,9 +291,11 @@ mergeInto(LibraryManager.library, {
         val = ret;
         var wait = Atomics['waitAsync'](HEAPU32, sem >> 2, ret, maxWaitMilliseconds);
       } while(wait.value === 'not-equal');
-
-      if (wait.value) dispatch(-1/*idx*/, 2/*'timed-out'*/);
-      else wait.then(tryAcquireSemaphore);
+#if ASSERTIONS
+      assert(wait.async || wait.value === 'timed-out');
+#endif
+      if (wait.async) wait.value.then(tryAcquireSemaphore);
+      else dispatch(-1/*idx*/, 2/*'timed-out'*/);
     }
     tryAcquireSemaphore();
   }
