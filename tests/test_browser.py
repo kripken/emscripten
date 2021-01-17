@@ -4969,6 +4969,12 @@ window.close = function() {
                expected='0',
                args=['-s', 'WASM_WORKERS=1', '-s', 'MINIMAL_RUNTIME=1'])
 
+  # Tests emscripten_semaphore_try_acquire() on the main thread
+  def test_wasm_worker_semaphore_waitinf_acquire(self):
+    self.btest(path_from_root('tests', 'wasm_worker', 'semaphore_try_acquire.c'),
+               expected='0',
+               args=['-s', 'WASM_WORKERS=1', '-s', 'MINIMAL_RUNTIME=1'])
+
   @no_firefox('no 4GB support yet')
   def test_zzz_zzz_4GB(self):
     # TODO Convert to an actual browser test when it reaches stable.
