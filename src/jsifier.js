@@ -284,10 +284,10 @@ function JSify(data, functionsOnly) {
       if (isFunction) {
         // Emit the body of a JS library function.
         var proxyingMode = LibraryManager.library[ident + '__proxy'];
+        if (proxyingMode && proxyingMode !== 'sync' && proxyingMode !== 'async') {
+          throw 'Invalid proxyingMode ' + ident + '__proxy: \'' + proxyingMode + '\' specified!';
+        }
         if (USE_PTHREADS && proxyingMode) {
-          if (proxyingMode !== 'sync' && proxyingMode !== 'async') {
-            throw 'Invalid proxyingMode ' + ident + '__proxy: \'' + proxyingMode + '\' specified!';
-          }
           var sync = proxyingMode === 'sync';
           assert(typeof original === 'function');
           contentText = modifyFunction(snippet, function(name, args, body) {
@@ -295,6 +295,14 @@ function JSify(data, functionsOnly) {
                    'if (ENVIRONMENT_IS_PTHREAD) return _emscripten_proxy_to_main_thread_js(' + proxiedFunctionTable.length + ', ' + (+sync) + (args ? ', ' : '') + args + ');\n' + body + '}\n';
           });
           proxiedFunctionTable.push(finalName);
+        } else if (WASM_WORKERS && ASSERTIONS && proxyingMode) {
+          // In ASSERTIONS builds add runtime checks that proxied functions are not attempted to be called in Wasm Workers
+          // (since there is no automatic proxying architecture available)
+          contentText = modifyFunction(snippet, function(name, args, body) {
+            return 'function ' + name + '(' + args + ') {\n' +
+                   'assert(!ENVIRONMENT_IS_WASM_WORKER, "Attempted to call proxied function \\"' + name + '\\" in a Wasm Worker, but in Wasm Worker enabled builds, proxied function architecture is not available!");\n'
+                   + body + '}\n';
+          });
         } else {
           contentText = snippet; // Regular JS function that will be executed in the context of the calling thread.
         }

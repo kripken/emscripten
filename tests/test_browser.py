@@ -4956,6 +4956,13 @@ window.close = function() {
                expected='0',
                args=['-s', 'WASM_WORKERS=1', '-s', 'MINIMAL_RUNTIME=1'])
 
+  # Tests that proxied JS functions cannot be called from Wasm Workers
+  def test_wasm_worker_no_proxied_js_functions(self):
+    self.btest(path_from_root('tests', 'wasm_worker', 'no_proxied_js_functions.c'),
+               expected='0',
+               args=['--js-library', path_from_root('tests', 'wasm_worker', 'no_proxied_js_functions.js'),
+                     '-s', 'WASM_WORKERS=1', '-s', 'MINIMAL_RUNTIME=1', '-s', 'ASSERTIONS=1'])
+
   @no_firefox('no 4GB support yet')
   def test_zzz_zzz_4GB(self):
     # TODO Convert to an actual browser test when it reaches stable.
