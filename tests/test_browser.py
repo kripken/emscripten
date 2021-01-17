@@ -4951,7 +4951,7 @@ window.close = function() {
                args=['-s', 'WASM_WORKERS=1', '-s', 'MINIMAL_RUNTIME=1'])
 
   # Tests emscripten_lock_async_acquire() function.
-  def test_wasm_worker_lock_wait2(self):
+  def test_wasm_worker_lock_async_acquire(self):
     self.btest(path_from_root('tests', 'wasm_worker', 'lock_async_acquire.c'),
                expected='0',
                args=['-s', 'WASM_WORKERS=1', '-s', 'MINIMAL_RUNTIME=1'])
