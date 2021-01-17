@@ -4970,7 +4970,7 @@ window.close = function() {
                args=['-s', 'WASM_WORKERS=1', '-s', 'MINIMAL_RUNTIME=1'])
 
   # Tests emscripten_semaphore_try_acquire() on the main thread
-  def test_wasm_worker_semaphore_waitinf_acquire(self):
+  def test_wasm_worker_semaphore_try_acquire(self):
     self.btest(path_from_root('tests', 'wasm_worker', 'semaphore_try_acquire.c'),
                expected='0',
                args=['-s', 'WASM_WORKERS=1', '-s', 'MINIMAL_RUNTIME=1'])
