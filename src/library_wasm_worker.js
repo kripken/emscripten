@@ -229,14 +229,11 @@ mergeInto(LibraryManager.library, {
   emscripten_atomic_wait_async__deps: ['_emscripten_atomic_wait_states'],
   emscripten_atomic_wait_async: function(addr, val, asyncWaitFinished, userData, maxWaitMilliseconds) {
     var wait = Atomics['waitAsync'](HEAP32, addr >> 2, val, maxWaitMilliseconds);
-    if (wait.async) {
-      wait.value.then((value) => {
-        {{{ makeDynCall('viiii', 'asyncWaitFinished') }}}(addr, val, __emscripten_atomic_wait_states.indexOf(value), userData);
-      });
-      // Implicit return 0 /*ATOMICS_WAIT_OK*/;
-    } else {
-      return __emscripten_atomic_wait_states.indexOf(wait.value);
-    }
+    if (!wait.async) return __emscripten_atomic_wait_states.indexOf(wait.value);
+    wait.value.then((value) => {
+      {{{ makeDynCall('viiii', 'asyncWaitFinished') }}}(addr, val, __emscripten_atomic_wait_states.indexOf(value), userData);
+    });
+    // Implicit return 0 /*ATOMICS_WAIT_OK*/;
   },
 
   emscripten_navigator_hardware_concurrency: function() {
