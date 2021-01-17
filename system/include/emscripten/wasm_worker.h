@@ -157,7 +157,7 @@ void emscripten_semaphore_async_acquire(emscripten_semaphore_t *sem,
 // worker, sleep to acquire num instances. Returns idx that was acquired, or -1 if timed out unable to acquire.
 int emscripten_semaphore_wait_acquire(emscripten_semaphore_t *sem, int num, int64_t maxWaitNanoseconds);
 
-// worker, sleep infinitely long to acquire num instances. Returns idx that was acquired, or -1 if timed out unable to acquire.
+// worker, sleep infinitely long to acquire num instances. Returns idx that was acquired.
 int emscripten_semaphore_waitinf_acquire(emscripten_semaphore_t *sem, int num);
 
 // Releases the given number of resources back to the semaphore. Note
