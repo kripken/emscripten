@@ -275,13 +275,27 @@ mergeInto(LibraryManager.library, {
   },
 
   emscripten_atomic_cancel_all_wait_asyncs__deps: ['_emscripten_atomic_live_wait_asyncs'],
-  emscripten_atomic_cancel_all_wait_asyncs: function(waitToken) {
+  emscripten_atomic_cancel_all_wait_asyncs: function() {
     var waitAsyncs = Object.values(__emscripten_atomic_live_wait_asyncs);
     waitAsyncs.forEach((address) => {
       Atomics.notify(HEAP32, address);
     });
     __emscripten_atomic_live_wait_asyncs = {};
     return waitAsyncs.length;
+  },
+
+  emscripten_atomic_cancel_all_wait_asyncs_at_address__deps: ['_emscripten_atomic_live_wait_asyncs'],
+  emscripten_atomic_cancel_all_wait_asyncs_at_address: function(address) {
+    address >>= 2;
+    var numCancelled = 0;
+    Object.keys(__emscripten_atomic_live_wait_asyncs).forEach((waitToken) => {
+      if (__emscripten_atomic_live_wait_asyncs[waitToken] == address) {
+        Atomics.notify(HEAP32, address);
+        delete __emscripten_atomic_live_wait_asyncs[waitToken];
+        ++numCancelled;
+      }
+    });
+    return numCancelled;
   },
 
   emscripten_navigator_hardware_concurrency: function() {

@@ -4944,6 +4944,12 @@ window.close = function() {
                expected='1',
                args=['-s', 'WASM_WORKERS=1', '-s', 'MINIMAL_RUNTIME=1'])
 
+  # Tests emscripten_atomic_cancel_all_wait_asyncs_at_address() function.
+  def test_wasm_worker_cancel_all_wait_asyncs_at_address(self):
+    self.btest(path_from_root('tests', 'wasm_worker', 'cancel_all_wait_asyncs_at_address.c'),
+               expected='1',
+               args=['-s', 'WASM_WORKERS=1', '-s', 'MINIMAL_RUNTIME=1'])
+
   # Tests emscripten_lock_init(), emscripten_lock_waitinf_acquire() and emscripten_lock_release()
   def test_wasm_worker_lock_waitinf(self):
     self.btest(path_from_root('tests', 'wasm_worker', 'lock_waitinf_acquire.c'),

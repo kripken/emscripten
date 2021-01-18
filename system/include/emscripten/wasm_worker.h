@@ -53,18 +53,18 @@ void emscripten_wasm_worker_post_function_sig(emscripten_wasm_worker_t id, void 
 // If the given memory address contains value 'expectedValue', puts the calling thread to sleep to wait for that address to be notified.
 // Returns one of the ATOMICS_WAIT_* return codes.
 // NOTE: This function takes in the wait value in int64_t nanosecond units. Pass in maxWaitNanoseconds = -1 to wait infinitely long.
-static inline __attribute__((always_inline)) ATOMICS_WAIT_RESULT_T emscripten_wasm_wait_i32(int32_t *addr, int expectedValue, int64_t maxWaitNanoseconds)
+static inline __attribute__((always_inline)) ATOMICS_WAIT_RESULT_T emscripten_wasm_wait_i32(int32_t *address, int expectedValue, int64_t maxWaitNanoseconds)
 {
-	return __builtin_wasm_memory_atomic_wait32(addr, expectedValue, maxWaitNanoseconds);
+	return __builtin_wasm_memory_atomic_wait32(address, expectedValue, maxWaitNanoseconds);
 }
 
 // Issues the wasm 'memory.atomic.wait64' instruction:
 // If the given memory address contains value 'expectedValue', puts the calling thread to sleep to wait for that address to be notified.
 // Returns one of the ATOMICS_WAIT_* return codes.
 // NOTE: This function takes in the wait value in int64_t nanosecond units. Pass in maxWaitNanoseconds = -1 to wait infinitely long.
-static inline __attribute__((always_inline)) ATOMICS_WAIT_RESULT_T emscripten_wasm_wait_i64(int64_t *addr, int64_t expectedValue, int64_t maxWaitNanoseconds)
+static inline __attribute__((always_inline)) ATOMICS_WAIT_RESULT_T emscripten_wasm_wait_i64(int64_t *address, int64_t expectedValue, int64_t maxWaitNanoseconds)
 {
-	return __builtin_wasm_memory_atomic_wait64(addr, expectedValue, maxWaitNanoseconds);
+	return __builtin_wasm_memory_atomic_wait64(address, expectedValue, maxWaitNanoseconds);
 }
 
 #define EMSCRIPTEN_NOTIFY_ALL_WAITERS (-1LL)
@@ -74,9 +74,9 @@ static inline __attribute__((always_inline)) ATOMICS_WAIT_RESULT_T emscripten_wa
 // Pass count == EMSCRIPTEN_NOTIFY_ALL_WAITERS to notify all waiters on the given location.
 // Returns the number of threads that were woken up.
 // Note: this function is used to notify both waiters waiting on an i32 and i64 addresses.
-static inline __attribute__((always_inline)) int64_t emscripten_wasm_notify(int32_t *addr, int64_t count)
+static inline __attribute__((always_inline)) int64_t emscripten_wasm_notify(int32_t *address, int64_t count)
 {
-	return __builtin_wasm_memory_atomic_notify(addr, count);
+	return __builtin_wasm_memory_atomic_notify(address, count);
 }
 
 #define EMSCRIPTEN_WAIT_ASYNC_INFINITY __builtin_inf()
@@ -87,7 +87,7 @@ static inline __attribute__((always_inline)) int64_t emscripten_wasm_notify(int3
 #define EMSCRIPTEN_IS_VALID_WAIT_TOKEN(token) ((token) <= 0)
 
 // Issues the JavaScript 'Atomics.waitAsync' instruction:
-// performs an asynchronous wait operation on the main thread. If the given address contains val, issues a
+// performs an asynchronous wait operation on the main thread. If the given 'address' contains 'value', issues a
 // deferred wait that will invoke the specified callback function 'asyncWaitFinished' once that
 // address has been notified by another thread.
 // NOTE: Unlike functions emscripten_wasm_wait_i32() and emscripten_wasm_wait_i64() which take in the
@@ -96,14 +96,14 @@ static inline __attribute__((always_inline)) int64_t emscripten_wasm_notify(int3
 // Pass in maxWaitMilliseconds == EMSCRIPTEN_WAIT_ASYNC_INFINITY (==__builtin_inf()) to wait infinitely long.
 // Returns one of:
 //  - ATOMICS_WAIT_NOT_EQUAL if the waitAsync operation could not be registered since the memory value did not
-//    contain the value 'val'.
+//    contain the value 'value'.
 //  - ATOMICS_WAIT_TIMED_OUT if the waitAsync operation timeout parameter was <= 0.
 //  - Any other value: denotes a 'wait token' that can be passed to function emscripten_atomic_cancel_wait_async()
 //    to unregister an asynchronous wait. You can use the macro EMSCRIPTEN_IS_VALID_WAIT_TOKEN(retval) to check
 //    if this function returned a valid wait token.
-ATOMICS_WAIT_TOKEN_T emscripten_atomic_wait_async(int32_t *addr,
-                                                  uint32_t val,
-                                                  void (*asyncWaitFinished)(int32_t *addr, uint32_t val, ATOMICS_WAIT_RESULT_T waitResult, void *userData),
+ATOMICS_WAIT_TOKEN_T emscripten_atomic_wait_async(int32_t *address,
+                                                  uint32_t value,
+                                                  void (*asyncWaitFinished)(int32_t *address, uint32_t value, ATOMICS_WAIT_RESULT_T waitResult, void *userData),
                                                   void *userData,
                                                   double maxWaitMilliseconds);
 
@@ -126,6 +126,10 @@ EMSCRIPTEN_RESULT emscripten_atomic_cancel_wait_async(ATOMICS_WAIT_TOKEN_T waitT
 // Otherwise, you can wrap the Wasm content in an iframe and unload the iframe to let GC occur. (navigating away
 // from the page or closing that tab will also naturally reclaim the memory)
 int emscripten_atomic_cancel_all_wait_asyncs(void);
+
+// Cancels all pending async waits in the calling thread to the given memory address.
+// Returns the number of async waits canceled.
+int emscripten_atomic_cancel_all_wait_asyncs_at_address(int32_t *address);
 
 // Sleeps the calling wasm worker for the given nanoseconds. Calling this function on the main thread
 // either results in a TypeError exception (Firefox), or a silent return without waiting (Chrome),
@@ -159,7 +163,7 @@ void emscripten_lock_waitinf_acquire(emscripten_lock_t *lock);
 
 // main thread + worker, raise an event when the lock is acquired. If you use this API in Worker, you cannot run an infinite loop.
 void emscripten_lock_async_acquire(emscripten_lock_t *lock,
-                                   void (*asyncWaitFinished)(volatile void *addr, uint32_t val, ATOMICS_WAIT_RESULT_T waitResult, void *userData),
+                                   void (*asyncWaitFinished)(volatile void *address, uint32_t value, ATOMICS_WAIT_RESULT_T waitResult, void *userData),
                                    void *userData,
                                    double maxWaitMilliseconds);
 
@@ -182,7 +186,7 @@ int emscripten_semaphore_try_acquire(emscripten_semaphore_t *sem, int num);
 // main thread, poll to try acquire num instances. Returns idx that was acquired. If you use this API in Worker, you cannot run an infinite loop.
 void emscripten_semaphore_async_acquire(emscripten_semaphore_t *sem,
                                         int num,
-                                        void (*asyncWaitFinished)(volatile void *addr, uint32_t idx, ATOMICS_WAIT_RESULT_T result, void *userData),
+                                        void (*asyncWaitFinished)(volatile void *address, uint32_t idx, ATOMICS_WAIT_RESULT_T result, void *userData),
                                         void *userData,
                                         double maxWaitMilliseconds);
 
