@@ -25,30 +25,20 @@ void emscripten_lock_init(emscripten_lock_t *lock)
 
 EM_BOOL emscripten_lock_wait_acquire(emscripten_lock_t *lock, int64_t maxWaitNanoseconds)
 {
-	emscripten_lock_t val;
-	int64_t waitEnd = 0;
-	do
+	emscripten_lock_t val = emscripten_atomic_cas_u32((void*)lock, 0, 1);
+	if (!val) return EM_TRUE;
+	int64_t waitEnd = (int64_t)(emscripten_performance_now() * 1e6) + maxWaitNanoseconds;
+	while(maxWaitNanoseconds > 0)
 	{
+		emscripten_wasm_wait_i32((int32_t*)lock, val, maxWaitNanoseconds);
 		val = emscripten_atomic_cas_u32((void*)lock, 0, 1);
-		if (val)
-		{
-			int64_t t = (int64_t)(emscripten_performance_now() * 1e6);
-			if (waitEnd)
-			{
-				if (t > waitEnd) return EM_FALSE;
-				maxWaitNanoseconds = waitEnd - t;
-			}
-			else
-			{
-				waitEnd = (int64_t)(emscripten_performance_now()*1e6) + maxWaitNanoseconds;
-			}
-			emscripten_wasm_wait_i32((int32_t*)lock, val, maxWaitNanoseconds);
-		}
-	} while(val);
-	return EM_TRUE;
+		if (!val) return EM_TRUE;
+		maxWaitNanoseconds = waitEnd - (int64_t)(emscripten_performance_now() * 1e6);
+	}
+	return EM_FALSE;
 }
 
-void emscripten_lock_waitinf_acquire(emscripten_lock_t *lock) // only in worker
+void emscripten_lock_waitinf_acquire(emscripten_lock_t *lock)
 {
 	emscripten_lock_t val;
 	do
@@ -59,9 +49,34 @@ void emscripten_lock_waitinf_acquire(emscripten_lock_t *lock) // only in worker
 	} while(val);
 }
 
+EM_BOOL emscripten_lock_busyspin_wait_acquire(emscripten_lock_t *lock, double maxWaitMilliseconds)
+{
+	emscripten_lock_t val = emscripten_atomic_cas_u32((void*)lock, 0, 1);
+	if (!val) return EM_TRUE;
+
+	double t = emscripten_performance_now();
+	double waitEnd = t + maxWaitMilliseconds;
+	while(t < waitEnd)
+	{
+		val = emscripten_atomic_cas_u32((void*)lock, 0, 1);
+		if (!val) return EM_TRUE;
+		t = emscripten_performance_now();
+	}
+	return EM_FALSE;
+}
+
+void emscripten_lock_busyspin_waitinf_acquire(emscripten_lock_t *lock)
+{
+	emscripten_lock_t val;
+	do
+	{
+		val = emscripten_atomic_cas_u32((void*)lock, 0, 1);
+	} while(val);
+}
+
 EM_BOOL emscripten_lock_try_acquire(emscripten_lock_t *lock)
 {
-	uint32_t val = emscripten_atomic_cas_u32((void*)lock, 0, 1);
+	emscripten_lock_t val = emscripten_atomic_cas_u32((void*)lock, 0, 1);
 	return !val;
 }
 

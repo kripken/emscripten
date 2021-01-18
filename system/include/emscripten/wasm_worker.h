@@ -156,20 +156,70 @@ int emscripten_atomics_is_lock_free(int byteWidth);
 
 void emscripten_lock_init(emscripten_lock_t *lock);
 
-// Returns true if the lock was successfully acquired. False on timeout.
-// Can be only called in a Worker, not on the main browser thread.
+// Attempts to acquire the specified lock. If the lock is free, then this function acquires
+// the lock and immediately returns EM_TRUE. If the lock is not free at the time of the call,
+// the calling thread is set to synchronously sleep for at most maxWaitNanoseconds long, until
+// another thread releases the lock. If the lock is acquired within that period, the function
+// returns EM_TRUE. If the lock is not acquired within the specified period, then the wait
+// times out and EM_FALSE is returned.
+// NOTE: This function can be only called in a Worker, and not on the main browser thread,
+//       because the main browser thread cannot synchronously sleep to wait for locks.
 EM_BOOL emscripten_lock_wait_acquire(emscripten_lock_t *lock, int64_t maxWaitNanoseconds);
+
+// Similar to emscripten_lock_wait_acquire(), but instead of waiting for at most a specified
+// timeout value, the thread will wait indefinitely long until the lock can be acquired.
+// NOTE: The only way to abort this wait is to call emscripten_terminate_wasm_worker() on the
+//       Worker.
+// NOTE: This function can be only called in a Worker, and not on the main browser thread,
+//       because the main browser thread cannot synchronously sleep to wait for locks.
 void emscripten_lock_waitinf_acquire(emscripten_lock_t *lock);
 
-// main thread + worker, raise an event when the lock is acquired. If you use this API in Worker, you cannot run an infinite loop.
+// Similar to emscripten_lock_wait_acquire(), but instead of placing the calling thread to
+// sleep until the lock can be acquired, this function will burn CPU cycles attempting to
+// acquire the lock, until the given timeout is met.
+// This function can be called in both main thread and in Workers.
+// NOTE: The wait period used for this function is specified in milliseconds instead of
+//       nanoseconds, see https://github.com/WebAssembly/threads/issues/175 for details.
+// NOTE: If this function is called on the main thread, be sure to use a reasonable max wait
+//       value, or otherwise a "slow script dialog" notification can pop up, and can cause the
+//       browser to stop executing the page.
+EM_BOOL emscripten_lock_busyspin_wait_acquire(emscripten_lock_t *lock, double maxWaitMilliseconds);
+
+// Similar to emscripten_lock_wait_acquire(), but instead of placing the calling thread to
+// sleep until the lock can be acquired, this function will burn CPU cycles indefinitely until
+// the given lock can be acquired.
+// This function can be called in both main thread and in Workers.
+// NOTE: The only way to abort this wait is to call emscripten_terminate_wasm_worker() on the
+//       Worker. If called on the main thread, and the lock cannot be acquired within a reasonable
+//       time period, this function will *HANG* the browser page content process, and show up
+//       a "slow script dialog", and/or cause the browser to stop the page. If you call this
+//       function on the main browser thread, be extra careful to analyze that the given lock will
+//       be extremely fast to acquire without contention from other threads.
+void emscripten_lock_busyspin_waitinf_acquire(emscripten_lock_t *lock);
+
+// Registers an *asynchronous* lock acquire operation. The calling thread will asynchronously
+// try to obtain the given lock after the calling thread yields back to the event loop. If the
+// attempt is successful within maxWaitMilliseconds period, then the given callback asyncWaitFinished
+// is called with waitResult == ATOMICS_WAIT_OK. If the lock is not acquired within the timeout
+// period, then the callback asyncWaitFinished is called with waitResult == ATOMICS_WAIT_TIMED_OUT.
+// NOTE: This function can be called in both main thread and in Workers. If you use this API in Worker,
+//       you cannot utilise an infinite loop programming model.
 void emscripten_lock_async_acquire(emscripten_lock_t *lock,
                                    void (*asyncWaitFinished)(volatile void *address, uint32_t value, ATOMICS_WAIT_RESULT_T waitResult, void *userData),
                                    void *userData,
                                    double maxWaitMilliseconds);
 
-// Can be called on both main thread and in Workers.
+// Attempts to acquire a lock, returning EM_TRUE if successful. If the lock is already held,
+// this function will not sleep to wait until the lock is released, but immediately returns
+// EM_FALSE.
+// This function can be called on both main thread and in Workers.
 EM_BOOL emscripten_lock_try_acquire(emscripten_lock_t *lock);
 
+// Unlocks the specified lock for another thread to access. Note that locks are extermely
+// lightweight, there is no "lock owner" tracking: this function does not actually check
+// whether the calling thread owns the specified lock, but any thread can call this function
+// to release a lock on behalf of whichever thread owns it.
+// This function can be called on both main thread and in Workers.
 void emscripten_lock_release(emscripten_lock_t *lock);
 
 #define emscripten_semaphore_t volatile uint32_t

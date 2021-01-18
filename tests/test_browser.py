@@ -4908,6 +4908,13 @@ window.close = function() {
                expected='8',
                args=['-s', 'WASM_WORKERS=1', '-s', 'MINIMAL_RUNTIME=1'])
 
+  # Tests emscripten_wasm_worker_post_function_*() API and EMSCRIPTEN_WASM_WORKER_ID_PARENT
+  # to send a message back from Worker to its parent thread.
+  def test_wasm_worker_post_function_to_main_thread(self):
+    self.btest(path_from_root('tests', 'wasm_worker', 'post_function_to_main_thread.c'),
+               expected='10',
+               args=['-s', 'WASM_WORKERS=1', '-s', 'MINIMAL_RUNTIME=1'])
+
   # Tests emscripten_navigator_hardware_concurrency() and emscripten_atomics_is_lock_free()
   def test_wasm_worker_hardware_concurrency_is_lock_free(self):
     self.btest(path_from_root('tests', 'wasm_worker', 'hardware_concurrency_is_lock_free.c'),
@@ -4972,6 +4979,18 @@ window.close = function() {
   def test_wasm_worker_lock_async_acquire(self):
     self.btest(path_from_root('tests', 'wasm_worker', 'lock_async_acquire.c'),
                expected='0',
+               args=['-s', 'WASM_WORKERS=1', '-s', 'MINIMAL_RUNTIME=1'])
+
+  # Tests emscripten_lock_busyspin_wait_acquire() in Worker and main thread.
+  def test_wasm_worker_lock_busyspin_wait(self):
+    self.btest(path_from_root('tests', 'wasm_worker', 'lock_busyspin_wait_acquire.c'),
+               expected='0',
+               args=['-s', 'WASM_WORKERS=1', '-s', 'MINIMAL_RUNTIME=1'])
+
+  # Tests emscripten_lock_busyspin_waitinf_acquire() in Worker and main thread.
+  def test_wasm_worker_lock_busyspin_waitinf(self):
+    self.btest(path_from_root('tests', 'wasm_worker', 'lock_busyspin_waitinf_acquire.c'),
+               expected='1',
                args=['-s', 'WASM_WORKERS=1', '-s', 'MINIMAL_RUNTIME=1'])
 
   # Tests that proxied JS functions cannot be called from Wasm Workers
