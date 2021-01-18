@@ -97,8 +97,8 @@ mergeInto(LibraryManager.library, {
     }
   },
   emscripten_terminate_all_wasm_workers: function() {
-    Object.keys(_wasm_workers).forEach((worker) => {
-      _wasm_workers[worker].terminate();
+    Object.values(_wasm_workers).forEach((worker) => {
+      worker.terminate();
     });
     _wasm_workers = {};
   },
@@ -233,14 +233,55 @@ mergeInto(LibraryManager.library, {
 
 #endif
 
-  emscripten_atomic_wait_async__deps: ['_emscripten_atomic_wait_states'],
+  _emscripten_atomic_live_wait_asyncs: '{}',
+  _emscripten_atomic_live_wait_asyncs_counter: '0',
+
+  emscripten_atomic_wait_async__deps: ['_emscripten_atomic_wait_states', '_emscripten_atomic_live_wait_asyncs', '_emscripten_atomic_live_wait_asyncs_counter'],
   emscripten_atomic_wait_async: function(addr, val, asyncWaitFinished, userData, maxWaitMilliseconds) {
     var wait = Atomics['waitAsync'](HEAP32, addr >> 2, val, maxWaitMilliseconds);
     if (!wait.async) return __emscripten_atomic_wait_states.indexOf(wait.value);
+    // Increment waitAsync generation counter, account for wraparound in case application does huge amounts of waitAsyncs per second (not sure if possible?)
+    // Valid counterrange: 0...2^31-1
+    var counter = __emscripten_atomic_live_wait_asyncs_counter;
+    __emscripten_atomic_live_wait_asyncs_counter = Math.max(0, (__emscripten_atomic_live_wait_asyncs_counter+1)|0);
+    __emscripten_atomic_live_wait_asyncs[counter] = addr >> 2;
     wait.value.then((value) => {
-      {{{ makeDynCall('viiii', 'asyncWaitFinished') }}}(addr, val, __emscripten_atomic_wait_states.indexOf(value), userData);
+      if (__emscripten_atomic_live_wait_asyncs[counter]) {
+        delete __emscripten_atomic_live_wait_asyncs[counter];
+        {{{ makeDynCall('viiii', 'asyncWaitFinished') }}}(addr, val, __emscripten_atomic_wait_states.indexOf(value), userData);
+      }
     });
-    // Implicit return 0 /*ATOMICS_WAIT_OK*/;
+    return -counter;
+  },
+
+  emscripten_atomic_cancel_wait_async__deps: ['_emscripten_atomic_live_wait_asyncs'],
+  emscripten_atomic_cancel_wait_async: function(waitToken) {
+#if ASSERTIONS
+    if (waitToken == 1 /* ATOMICS_WAIT_NOT_EQUAL */) warnOnce('Attempted to call emscripten_atomic_cancel_wait_async() with a value ATOMICS_WAIT_NOT_EQUAL (1) that is not a valid wait token! Check success in return value from call to emscripten_atomic_wait_async()');
+    else if (waitToken == 2 /* ATOMICS_WAIT_TIMED_OUT */) warnOnce('Attempted to call emscripten_atomic_cancel_wait_async() with a value ATOMICS_WAIT_TIMED_OUT (2) that is not a valid wait token! Check success in return value from call to emscripten_atomic_wait_async()');
+    else if (waitToken > 0) warnOnce('Attempted to call emscripten_atomic_cancel_wait_async() with an invalid wait token value ' + waitToken);
+#endif
+    if (__emscripten_atomic_live_wait_asyncs[waitToken]) {
+      // Notify the waitAsync waiters on the memory location, so that JavaScript garbage collection can occur
+      // See https://github.com/WebAssembly/threads/issues/176
+      // This has the unfortunate effect of causing spurious wakeup of all other waiters at the address (which
+      // causes a small performance loss)
+      Atomics.notify(HEAP32, __emscripten_atomic_live_wait_asyncs[waitToken]);
+      delete __emscripten_atomic_live_wait_asyncs[waitToken];
+      return 0 /* EMSCRIPTEN_RESULT_SUCCESS */;
+    }
+    // This waitToken does not exist.
+    return -5 /* EMSCRIPTEN_RESULT_INVALID_PARAM */;
+  },
+
+  emscripten_atomic_cancel_all_wait_asyncs__deps: ['_emscripten_atomic_live_wait_asyncs'],
+  emscripten_atomic_cancel_all_wait_asyncs: function(waitToken) {
+    var waitAsyncs = Object.values(__emscripten_atomic_live_wait_asyncs);
+    waitAsyncs.forEach((address) => {
+      Atomics.notify(HEAP32, address);
+    });
+    __emscripten_atomic_live_wait_asyncs = {};
+    return waitAsyncs.length;
   },
 
   emscripten_navigator_hardware_concurrency: function() {
