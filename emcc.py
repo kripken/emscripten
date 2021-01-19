@@ -1457,8 +1457,8 @@ There is NO warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR P
       exit_with_error('Cannot set GLOBAL_BASE when building SIDE_MODULE')
 
     if shared.Settings.RELOCATABLE:
-      shared.Settings.ERROR_ON_UNDEFINED_SYMBOLS = 0
-      shared.Settings.WARN_ON_UNDEFINED_SYMBOLS = 0
+      default_setting('ERROR_ON_UNDEFINED_SYMBOLS', 0)
+      default_setting('WARN_ON_UNDEFINED_SYMBOLS', 0)
 
     if shared.Settings.DISABLE_EXCEPTION_THROWING and not shared.Settings.DISABLE_EXCEPTION_CATCHING:
       exit_with_error("DISABLE_EXCEPTION_THROWING was set (probably from -fno-exceptions) but is not compatible with enabling exception catching (DISABLE_EXCEPTION_CATCHING=0). If you don't want exceptions, set DISABLE_EXCEPTION_CATCHING to 1; if you do want exceptions, don't link with -fno-exceptions")
@@ -1652,16 +1652,19 @@ There is NO warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR P
       if shared.Settings.USE_PTHREADS:
         exit_with_error('-pthread and -s USE_PTHREADS=1 are not supported with -s WASM_WORKERS!')
 
-    if shared.Settings.INITIAL_MEMORY % 65536 != 0:
-      exit_with_error('For wasm, INITIAL_MEMORY must be a multiple of 64KB, was ' + str(shared.Settings.INITIAL_MEMORY))
+    def check_memory_setting(setting):
+      if shared.Settings[setting] % webassembly.WASM_PAGE_SIZE != 0:
+        exit_with_error(f'{setting} must be a multiple of WebAssembly page size (64KiB), was {shared.Settings[setting]}')
+
+    check_memory_setting('INITIAL_MEMORY')
     if shared.Settings.INITIAL_MEMORY >= 2 * 1024 * 1024 * 1024:
       exit_with_error('INITIAL_MEMORY must be less than 2GB due to current spec limitations')
     if shared.Settings.INITIAL_MEMORY < shared.Settings.TOTAL_STACK:
-      exit_with_error('INITIAL_MEMORY must be larger than TOTAL_STACK, was ' + str(shared.Settings.INITIAL_MEMORY) + ' (TOTAL_STACK=' + str(shared.Settings.TOTAL_STACK) + ')')
-    if shared.Settings.MAXIMUM_MEMORY != -1 and shared.Settings.MAXIMUM_MEMORY % 65536 != 0:
-      exit_with_error('MAXIMUM_MEMORY must be a multiple of 64KB, was ' + str(shared.Settings.MAXIMUM_MEMORY))
-    if shared.Settings.MEMORY_GROWTH_LINEAR_STEP != -1 and shared.Settings.MEMORY_GROWTH_LINEAR_STEP % 65536 != 0:
-      exit_with_error('MEMORY_GROWTH_LINEAR_STEP must be a multiple of 64KB, was ' + str(shared.Settings.MEMORY_GROWTH_LINEAR_STEP))
+      exit_with_error(f'INITIAL_MEMORY must be larger than TOTAL_STACK, was {shared.Settings.INITIAL_MEMORY} (TOTAL_STACK={shared.Settings.TOTAL_STACK})')
+    if shared.Settings.MAXIMUM_MEMORY != -1:
+      check_memory_setting('MAXIMUM_MEMORY')
+    if shared.Settings.MEMORY_GROWTH_LINEAR_STEP != -1:
+      check_memory_setting('MEMORY_GROWTH_LINEAR_STEP')
     if (shared.Settings.USE_PTHREADS or shared.Settings.WASM_WORKERS) and shared.Settings.ALLOW_MEMORY_GROWTH and shared.Settings.MAXIMUM_MEMORY == -1:
       exit_with_error('If building with shared memory and memory growth are enabled, MAXIMUM_MEMORY must be set')
 
@@ -2872,7 +2875,7 @@ def do_binaryen(target, options, wasm_target):
     js = open(final_js).read()
 
     if shared.Settings.MINIMAL_RUNTIME:
-      js = do_replace(js, '{{{ WASM_BINARY_DATA }}}', base64_encode(open(wasm_target, 'rb').read()))
+      js = do_replace(js, '<<< WASM_BINARY_DATA >>>', base64_encode(open(wasm_target, 'rb').read()))
     else:
       js = do_replace(js, '<<< WASM_BINARY_FILE >>>', shared.JS.get_subresource_location(wasm_target))
     shared.try_delete(wasm_target)
