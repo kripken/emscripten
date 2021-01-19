@@ -46,7 +46,7 @@ def generate_minimal_runtime_load_statement(target_basename):
     if shared.Settings.MODULARIZE:
       modularize_imports += ['mem: r[%d]' % len(files_to_load)]
     else:
-      then_statements += ["Module.mem = r[%d];" % len(files_to_load)]
+      then_statements += ["%s.mem = r[%d];" % (shared.Settings.EXPORT_NAME, len(files_to_load))]
     files_to_load += ["binary('%s')" % (target_basename + '.mem')]
 
   # Download .wasm file
@@ -54,9 +54,22 @@ def generate_minimal_runtime_load_statement(target_basename):
     if shared.Settings.MODULARIZE:
       modularize_imports += ['wasm: r[%d]' % len(files_to_load)]
     else:
-      then_statements += ["Module.wasm = r[%d];" % len(files_to_load)]
+      then_statements += ["%s.wasm = r[%d];" % (shared.Settings.EXPORT_NAME, len(files_to_load))]
     if download_wasm:
       files_to_load += [download_wasm]
+
+  # Download wasm_worker file
+  if shared.Settings.WASM_WORKERS:
+    if shared.Settings.MODULARIZE:
+      if shared.Settings.WASM_WORKERS == 1:
+        modularize_imports += ['wasmWorker: URL.createObjectURL(new Blob([r[%d]], {type: "application/javascript"}))' % len(files_to_load)]
+      modularize_imports += ['js: js']
+    else:
+      if shared.Settings.WASM_WORKERS == 1:
+        then_statements += ['%s.wasmWorker = URL.createObjectURL(new Blob([r[%d]], {type: "application/javascript"}));' % (shared.Settings.EXPORT_NAME, len(files_to_load))]
+
+    if download_wasm and shared.Settings.WASM_WORKERS == 1:
+      files_to_load += ["binary('%s')" % (target_basename + '.ww.js')]
 
   if shared.Settings.MODULARIZE and shared.Settings.USE_PTHREADS:
     modularize_imports += ["worker: '{{{ PTHREAD_WORKER_FILE }}}'"]
@@ -66,12 +79,17 @@ def generate_minimal_runtime_load_statement(target_basename):
     if shared.Settings.MODULARIZE:
       modularize_imports += ['wasm: supportsWasm ? r[%d] : 0' % len(files_to_load)]
     else:
-      then_statements += ["if (supportsWasm) Module.wasm = r[%d];" % len(files_to_load)]
+      then_statements += ["if (supportsWasm) %s.wasm = r[%d];" % (shared.Settings.EXPORT_NAME, len(files_to_load))]
     files_to_load += ["supportsWasm ? %s : script('%s')" % (download_wasm, target_basename + '.wasm.js')]
 
   # Execute compiled output when building with MODULARIZE
   if shared.Settings.MODULARIZE:
-    then_statements += ['''// Detour the JS code to a separate variable to avoid instantiating with 'r' array as "this" directly to avoid strict ECMAScript/Firefox GC problems that cause a leak, see https://bugzilla.mozilla.org/show_bug.cgi?id=1540101
+
+    if shared.Settings.WASM_WORKERS:
+      then_statements += ['''// Detour the JS code to a separate variable to avoid instantiating with 'r' array as "this" directly to avoid strict ECMAScript/Firefox GC problems that cause a leak, see https://bugzilla.mozilla.org/show_bug.cgi?id=1540101
+  var js = URL.createObjectURL(new Blob([r[0]], {type: "application/javascript"}));\n script(js).then(function(c) { c({ %s }); });''' % ',\n  '.join(modularize_imports)]
+    else:
+      then_statements += ['''// Detour the JS code to a separate variable to avoid instantiating with 'r' array as "this" directly to avoid strict ECMAScript/Firefox GC problems that cause a leak, see https://bugzilla.mozilla.org/show_bug.cgi?id=1540101
   var js = r[0];\n  js({ %s });''' % ',\n  '.join(modularize_imports)]
 
   binary_xhr = '''  function binary(url) { // Downloads a binary file and outputs it in the specified callback
@@ -125,20 +143,26 @@ def generate_minimal_runtime_load_statement(target_basename):
     else:
       return script_xhr + files_to_load[0] + ";"
 
-  if not shared.Settings.MODULARIZE:
+  if not shared.Settings.MODULARIZE or shared.Settings.WASM_WORKERS:
     # If downloading multiple files like .wasm or .mem, those need to be loaded in
     # before we can add the main runtime script to the DOM, so convert the main .js
     # script load from direct script() load to a binary() load so we can still
     # immediately start the download, but can control when we add the script to the
     # DOM.
-    if shared.Settings.USE_PTHREADS:
+    if shared.Settings.USE_PTHREADS or shared.Settings.WASM_WORKERS:
       script_load = "script(url)"
     else:
       script_load = "script(url).then(() => { URL.revokeObjectURL(url) });"
 
+    if shared.Settings.WASM_WORKERS:
+      save_js = '%s.js = ' % shared.Settings.EXPORT_NAME
+    else:
+      save_js = ''
+
     files_to_load[0] = "binary('%s')" % (target_basename + '.js')
-    then_statements += ["var url = URL.createObjectURL(new Blob([r[0]], { type: 'application/javascript' }));",
-                        script_load]
+    if not shared.Settings.MODULARIZE:
+      then_statements += ["var url = %sURL.createObjectURL(new Blob([r[0]], { type: 'application/javascript' }));" % save_js,
+                          script_load]
 
   # Add in binary() XHR loader if used:
   if any("binary(" in s for s in files_to_load + then_statements):

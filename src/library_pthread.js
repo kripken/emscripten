@@ -750,7 +750,9 @@ var LibraryPThread = {
       // adjust it to Emscripten convention that the
       // stack grows upwards instead.
       stackBase -= stackSize;
+#if ASSERTIONS
       assert(stackBase > 0);
+#endif
     }
 
     // Allocate thread block (pthread_t structure).

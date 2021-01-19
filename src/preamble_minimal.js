@@ -88,15 +88,20 @@ if (!ENVIRONMENT_IS_PTHREAD) {
 #else
   var wasmMaximumMemory = {{{ INITIAL_MEMORY >>> 16}}};
 #endif
-  wasmMemory = new WebAssembly.Memory({
-    'initial': {{{ INITIAL_MEMORY >>> 16 }}}
+
+wasmMemory =
+#if WASM_WORKERS
+  Module['mem'] ||
+#endif
+  new WebAssembly.Memory({
+  'initial': {{{ INITIAL_MEMORY >>> 16 }}}
 #if USE_PTHREADS || !ALLOW_MEMORY_GROWTH || MAXIMUM_MEMORY != -1
-    , 'maximum': wasmMaximumMemory
+  , 'maximum': wasmMaximumMemory
 #endif
-#if USE_PTHREADS
-    , 'shared': true
+#if USE_PTHREADS || WASM_WORKERS
+  , 'shared': true
 #endif
-    });
+  });
   updateGlobalBufferAndViews(wasmMemory.buffer);
 #if USE_PTHREADS
 } else {
