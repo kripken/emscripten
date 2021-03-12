@@ -1087,11 +1087,7 @@ var LibraryBrowser = {
     var script = document.createElement('script');
     if (onload) {
       script.onload = function script_onload() {
-        if (runDependencies > 0) {
-          dependenciesFulfilled = onload;
-        } else {
-          onload();
-        }
+        onDependenciesFulfilled(onload);
       };
     }
     if (onerror) script.onerror = onerror;
