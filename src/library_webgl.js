@@ -3508,7 +3508,7 @@ var LibraryGL = {
   glIsVertexArrayOES: 'glIsVertexArray',
 
   // GLU
-
+#if LEGACY_GL_EMULATION
   gluPerspective: function(fov, aspect, near, far) {
     GLImmediate.matricesModified = true;
     GLImmediate.matrixVersion[GLImmediate.currentMatrix] = (GLImmediate.matrixVersion[GLImmediate.currentMatrix] + 1)|0;
@@ -3575,6 +3575,7 @@ var LibraryGL = {
   gluOrtho2D: function(left, right, bottom, top) {
     _glOrtho(left, right, bottom, top, -1, 1);
   },
+#endif
 
   // GLES2 emulation
 
