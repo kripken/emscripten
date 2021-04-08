@@ -443,6 +443,7 @@ function exportRuntime() {
     'setTempRet0',
     'callMain',
     'abort',
+    'wasmMemory',
   ];
 
   if (USE_OFFSET_CONVERTER) {
@@ -464,6 +465,7 @@ function exportRuntime() {
   if (!MINIMAL_RUNTIME) {
     // MINIMAL_RUNTIME has moved these functions to library_strings.js
     runtimeElements = runtimeElements.concat([
+      'ExitStatus',
       'warnOnce',
       'stackSave',
       'stackRestore',
@@ -485,21 +487,6 @@ function exportRuntime() {
   if (STACK_OVERFLOW_CHECK) {
     runtimeElements.push('writeStackCookie');
     runtimeElements.push('checkStackCookie');
-  }
-
-  if (USE_PTHREADS) {
-    // In pthreads mode, the following functions always need to be exported to
-    // Module for closure compiler, and also for MODULARIZE (so worker.js can
-    // access them).
-    var threadExports = ['PThread', 'wasmMemory'];
-    if (!MINIMAL_RUNTIME) {
-      threadExports.push('ExitStatus');
-    }
-
-    threadExports.forEach(function(x) {
-      EXPORTED_RUNTIME_METHODS_SET[x] = 1;
-      runtimeElements.push(x);
-    });
   }
 
   if (SUPPORT_BASE64_EMBEDDING) {

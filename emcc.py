@@ -1742,16 +1742,16 @@ There is NO warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR P
         if shared.Settings.EXPORT_NAME == 'Module':
           exit_with_error('pthreads + MODULARIZE currently require you to set -s EXPORT_NAME=Something (see settings.js) to Something != Module, so that the .worker.js file can work')
 
-        # MODULARIZE+USE_PTHREADS mode requires extra exports out to Module so that worker.js
-        # can access them:
+      # USE_PTHREADS mode requires extra exports out to Module so that worker.js
+      # can access them:
 
-        # general threading variables:
-        shared.Settings.EXPORTED_RUNTIME_METHODS += ['PThread']
+      # general threading variables:
+      shared.Settings.EXPORTED_RUNTIME_METHODS += ['PThread', 'wasmMemory']
 
-        # To keep code size to minimum, MINIMAL_RUNTIME does not utilize the global ExitStatus
-        # object, only regular runtime has it.
-        if not shared.Settings.MINIMAL_RUNTIME:
-          shared.Settings.EXPORTED_RUNTIME_METHODS += ['ExitStatus']
+      # To keep code size to minimum, MINIMAL_RUNTIME does not utilize the global ExitStatus
+      # object, only regular runtime has it.
+      if not shared.Settings.MINIMAL_RUNTIME:
+        shared.Settings.EXPORTED_RUNTIME_METHODS += ['ExitStatus']
 
       if shared.Settings.SIDE_MODULE:
         diagnostics.warning('experimental', '-s SIDE_MODULE + pthreads is experimental')
