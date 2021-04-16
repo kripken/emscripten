@@ -238,6 +238,7 @@ var WasiLibrary = {
     return 0;
   },
 
+  fd_pread__sig: 'iiiiii',
   fd_pread: function(fd, iov, iovcnt, {{{ defineI64Param('offset') }}}, pnum) {
     {{{ receiveI64ParamAsI32s('offset') }}}
 #if ASSERTIONS
@@ -267,24 +268,153 @@ var WasiLibrary = {
     if (stream.getdents && offset === 0 && whence === {{{ cDefine('SEEK_SET') }}}) stream.getdents = null; // reset readdir state
     return 0;
   },
+
+  $wasiRightsToMuslOFlags: function(rights) {
+#if SYSCALL_DEBUG
+    err('wasiRightsToMuslOFlags: ' + rights);
+#endif
+    if ((rights & {{{ cDefine('__WASI_RIGHTS_FD_READ') }}}) && (rights & {{{ cDefine('__WASI_RIGHTS_FD_WRITE') }}})) {
+      return {{{ cDefine('O_RDWR') }}};
+    }
+    if (rights & {{{ cDefine('__WASI_RIGHTS_FD_READ') }}}) {
+      return {{{ cDefine('O_RDONLY') }}};
+    }
+    if (rights & {{{ cDefine('__WASI_RIGHTS_FD_WRITE') }}}) {
+      return {{{ cDefine('O_WRONLY') }}};
+    }
+    throw new FS.ErrnoError({{{ cDefine('EINVAL') }}});
+  },
+
+  $wasiOFlagsToMuslOFlags: function(oflags) {
+    var musl_oflags = 0;
+    if (oflags & {{{ cDefine('__WASI_OFLAGS_CREAT') }}}) {
+      musl_oflags |= {{{ cDefine('O_CREAT') }}};
+    }
+    if (oflags & {{{ cDefine('__WASI_OFLAGS_TRUNC') }}}) {
+      musl_oflags |= {{{ cDefine('O_TRUNC') }}};
+    }
+    if (oflags & {{{ cDefine('__WASI_OFLAGS_DIRECTORY') }}}) {
+      musl_oflags |= {{{ cDefine('O_DIRECTORY') }}};
+    }
+    if (oflags & {{{ cDefine('__WASI_OFLAGS_EXCL') }}}) {
+      musl_oflags |= {{{ cDefine('O_EXCL') }}};
+    }
+    return musl_oflags;
+  },
+
+#if PURE_WASI
+  // preopen maps open file descriptors to pathname
+  $preopens: "{3: '/'}",
+
+  path_open__sig: 'iiiiiiiiii',
+  path_open__deps: ['$wasiRightsToMuslOFlags', '$wasiOFlagsToMuslOFlags', '$preopens'],
+  path_open: function(fd, dirflags, path, path_len, oflags,
+                      fs_rights_base, fs_rights_inherting,
+                      fdflags, opened_fd) {
+    if (!(fd in preopens)) {
+      return {{{ cDefine('EBADF') }}};
+    }
+    var pathname = UTF8ToString(path, path_len);
+    var musl_oflags = wasiRightsToMuslOFlags(Number(fs_rights_base));
+#if SYSCALL_DEBUG
+    err("oflags1: 0x" + musl_oflags.toString(16));
+#endif
+    musl_oflags |= wasiOFlagsToMuslOFlags(Number(oflags));
+#if SYSCALL_DEBUG
+    err("oflags2: 0x" + musl_oflags.toString(16));
+#endif
+    var stream = FS.open(pathname, musl_oflags);
+    {{{ makeSetValue('opened_fd', '0', 'stream.fd', 'i32') }}};
+    return 0;
+  },
+
+  fd_prestat_dir_name__deps: ['$preopens'],
+  fd_prestat_dir_name__sig: 'iiii',
+  fd_prestat_dir_name__nothrow: true,
+  fd_prestat_dir_name: function(fd, path, path_len) {
+    if (!(fd in preopens)) {
+      return {{{ cDefine('EBADF') }}};
+    }
+    var preopen = preopens[fd];
+    stringToUTF8Array(preopens, HEAP8, path, path_len)
+    return 0;
+  },
+
+  fd_prestat_get__deps: ['$preopens'],
+  fd_prestat_get__sig: 'iii',
+  fd_prestat_get__nothrow: true,
+  fd_prestat_get: function(fd, stat_buf) {
+    if (!(fd in preopens)) {
+      return {{{ cDefine('EBADF') }}};
+    }
+    var preopen = preopens[fd];
+    {{{ makeSetValue('stat_buf', C_STRUCTS.__wasi_prestat_t.pr_type, cDefine('__WASI_PREOPENTYPE_DIR'), 'i8') }}};
+    {{{ makeSetValue('stat_buf', C_STRUCTS.__wasi_prestat_t.u + C_STRUCTS.__wasi_prestat_dir_t.pr_name_len, 'preopen.length', 'i64') }}};
+    return 0;
+  },
+
+  fd_fdstat_set_flags__sig: 'iii',
+  fd_fdstat_set_flags: function(fd, flags) {
+    // TODO(sbc): implement
+    var stream = SYSCALLS.getStreamFromFD(fd);
+    return 0;
+  },
+
+  fd_filestat_get__sig: 'iii',
+  fd_filestat_get: function(fd, stat_buf) {
+    // TODO(sbc): implement
+    var stream = SYSCALLS.getStreamFromFD(fd);
+    {{{ makeSetValue('stat_buf', C_STRUCTS.__wasi_filestat_t.dev, '0', 'i64') }}};
+    {{{ makeSetValue('stat_buf', C_STRUCTS.__wasi_filestat_t.ino, '0', 'i64') }}};
+    {{{ makeSetValue('stat_buf', C_STRUCTS.__wasi_filestat_t.filetype, '0', 'i8') }}};
+    {{{ makeSetValue('stat_buf', C_STRUCTS.__wasi_filestat_t.nlink, '0', 'i64') }}};
+    {{{ makeSetValue('stat_buf', C_STRUCTS.__wasi_filestat_t.size, '0', 'i64') }}};
+    {{{ makeSetValue('stat_buf', C_STRUCTS.__wasi_filestat_t.atim, '0', 'i64') }}};
+    {{{ makeSetValue('stat_buf', C_STRUCTS.__wasi_filestat_t.mtim, '0', 'i64') }}};
+    {{{ makeSetValue('stat_buf', C_STRUCTS.__wasi_filestat_t.ctim, '0', 'i64') }}};
+    return 0;
+  },
+#endif
+
+#if PURE_WASI
+  fd_fdstat_get__deps: ['$preopens'],
+#endif
   fd_fdstat_get__sig: 'iii',
   fd_fdstat_get: function(fd, pbuf) {
-#if SYSCALLS_REQUIRE_FILESYSTEM
-    var stream = SYSCALLS.getStreamFromFD(fd);
-    // All character devices are terminals (other things a Linux system would
-    // assume is a character device, like the mouse, we have special APIs for).
-    var type = stream.tty ? {{{ cDefine('__WASI_FILETYPE_CHARACTER_DEVICE') }}} :
-               FS.isDir(stream.mode) ? {{{ cDefine('__WASI_FILETYPE_DIRECTORY') }}} :
-               FS.isLink(stream.mode) ? {{{ cDefine('__WASI_FILETYPE_SYMBOLIC_LINK') }}} :
-               {{{ cDefine('__WASI_FILETYPE_REGULAR_FILE') }}};
-#else
-    // hack to support printf in SYSCALLS_REQUIRE_FILESYSTEM=0
-    var type = fd == 1 || fd == 2 ? {{{ cDefine('__WASI_FILETYPE_CHARACTER_DEVICE') }}} : abort();
+    var rights_base = 0;
+    var rights_inheriting = 0;
+#if PURE_WASI
+    if (fd in preopens) {
+      var type = {{{ cDefine('__WASI_FILETYPE_DIRECTORY') }}};
+      rights_base =  {{{ cDefine('__WASI_RIGHTS_PATH_CREATE_FILE') |
+                             cDefine('__WASI_RIGHTS_PATH_OPEN') }}};
+      rights_inheriting =  {{{ cDefine('__WASI_RIGHTS_FD_READ') |
+                                   cDefine('__WASI_RIGHTS_FD_WRITE') }}}
+    } else
 #endif
+    {
+#if SYSCALLS_REQUIRE_FILESYSTEM
+      var stream = SYSCALLS.getStreamFromFD(fd);
+      // All character devices are terminals (other things a Linux system would
+      // assume is a character device, like the mouse, we have special APIs for).
+      var type = stream.tty ? {{{ cDefine('__WASI_FILETYPE_CHARACTER_DEVICE') }}} :
+                 FS.isDir(stream.mode) ? {{{ cDefine('__WASI_FILETYPE_DIRECTORY') }}} :
+                 FS.isLink(stream.mode) ? {{{ cDefine('__WASI_FILETYPE_SYMBOLIC_LINK') }}} :
+                 {{{ cDefine('__WASI_FILETYPE_REGULAR_FILE') }}};
+#else
+      // hack to support printf in SYSCALLS_REQUIRE_FILESYSTEM=0
+      var type = fd == 1 || fd == 2 ? {{{ cDefine('__WASI_FILETYPE_CHARACTER_DEVICE') }}} : abort();
+      if (fd == 0) {
+        rights_base = {{{ cDefine('__WASI_RIGHTS_FD_READ') }}};
+      } else if (fd == 1 || fd == 2) {
+        rights_base = {{{ cDefine('__WASI_RIGHTS_FD_WRITE') }}};
+      }
+#endif
+    }
     {{{ makeSetValue('pbuf', C_STRUCTS.__wasi_fdstat_t.fs_filetype, 'type', 'i8') }}};
-    // TODO {{{ makeSetValue('pbuf', C_STRUCTS.__wasi_fdstat_t.fs_flags, '?', 'i16') }}};
-    // TODO {{{ makeSetValue('pbuf', C_STRUCTS.__wasi_fdstat_t.fs_rights_base, '?', 'i64') }}};
-    // TODO {{{ makeSetValue('pbuf', C_STRUCTS.__wasi_fdstat_t.fs_rights_inheriting, '?', 'i64') }}};
+    {{{ makeSetValue('pbuf', C_STRUCTS.__wasi_fdstat_t.fs_flags, 0, 'i16') }}};
+    {{{ makeSetValue('pbuf', C_STRUCTS.__wasi_fdstat_t.fs_rights_base, 'rights_base', 'i64') }}};
+    {{{ makeSetValue('pbuf', C_STRUCTS.__wasi_fdstat_t.fs_rights_inheriting, 'rights_inheriting', 'i64') }}};
     return 0;
   },
 

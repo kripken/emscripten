@@ -131,6 +131,7 @@ commands:
           command: git submodule update --init
       - emsdk-env
       - npm-install
+      - run: git submodule update --init
       - run:
           name: run tests
           command: |
@@ -149,6 +150,7 @@ commands:
       - checkout
       - emsdk-env
       - npm-install
+      - run: git submodule update --init
       - run:
           name: Install brew package dependencies
           environment:

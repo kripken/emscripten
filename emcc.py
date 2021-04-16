@@ -1248,7 +1248,7 @@ There is NO warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR P
 
     shared.verify_settings()
 
-    if (options.oformat == OFormat.WASM or shared.Settings.PURE_WASI) and not shared.Settings.SIDE_MODULE:
+    if options.oformat == OFormat.WASM and not shared.Settings.SIDE_MODULE:
       # if the output is just a wasm file, it will normally be a standalone one,
       # as there is no JS. an exception are side modules, as we can't tell at
       # compile time whether JS will be involved or not - the main module may
@@ -1258,6 +1258,10 @@ There is NO warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR P
 
     if shared.Settings.LZ4:
       shared.Settings.EXPORTED_RUNTIME_METHODS += ['LZ4']
+
+    if shared.Settings.PURE_WASI:
+      shared.Settings.STANDALONE_WASM = 1
+      shared.Settings.WASM_BIGINT = 1
 
     if shared.Settings.WASM2C:
       # wasm2c only makes sense with standalone wasm - there will be no JS,

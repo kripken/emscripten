@@ -10330,3 +10330,38 @@ exec "$@"
     # Test that ERROR_ON_UNDEFINED_SYMBOLS works with MAIN_MODULE.
     self.run_process([EMCC, '-sMAIN_MODULE', '-sERROR_ON_UNDEFINED_SYMBOLS', test_file('hello_world.c')])
     self.run_js('a.out.js')
+
+  def test_wasm_exception_handing_support(self):
+    # building an object file is fine
+    self.run_process([EMCC, path_from_root('tests', 'hello_world.c'), '-O2', '-fwasm-exceptions', '-c'])
+
+    # TODO: test -O1 linking works, but libc++ cannot be built yet
+
+    # linking with -O2+ is not ok currently
+    err = self.expect_fail([EMCC, path_from_root('tests', 'hello_world.c'), '-O2', '-fwasm-exceptions'])
+    self.assertContained('wasm exception handling support is still experimental, and linking with -O2+ is not supported yet', err)
+
+  def run_wasi_test_suite_test(self, name):
+    self.node_args.append('--experimental-wasm-bigint')
+    wasm = path_from_root('tests', 'third_party', 'wasi-test-suite', name + '.wasm')
+    if not os.path.exists(wasm):
+      self.fail('wasi-test-suite not found; run `git submodule update --init`')
+    self.run_process([EMCC, '-Wno-experimental', '--post-link', '-g', '-sPURE_WASI', '-lnodefs.js', '-lnoderawfs.js', wasm, '-o', name + '.js'])
+
+    with open(path_from_root('tests', 'third_party', 'wasi-test-suite', name + '.json')) as f:
+      config = json.load(f)
+    exit_code = config.get('exitCode', 0)
+    args = config.get('args', [])
+    output = self.run_js(name + '.js', args=args, assert_returncode=exit_code)
+    if 'stdout' in config:
+      self.assertContained(config['stdout'], output)
+
+  def test_wasi_std_io_stdout(self):
+    self.node_args.append('--experimental-wasm-bigint')
+    self.run_wasi_test_suite_test('std_io_stdout')
+
+  def test_wasi_wasi_fd_write_file(self):
+    self.node_args.append('--experimental-wasm-bigint')
+    self.run_wasi_test_suite_test('wasi_fd_write_file')
+    with open('new_file') as f:
+      self.assertEqual(f.read(), 'new_file')
