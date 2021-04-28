@@ -44,6 +44,7 @@ scons_path = utils.which('scons')
 emmake = shared.bat_suffix(path_from_root('emmake'))
 emconfig = shared.bat_suffix(path_from_root('em-config'))
 emsize = shared.bat_suffix(path_from_root('emsize'))
+emprofile = shared.bat_suffix(path_from_root('emprofile'))
 wasm_dis = os.path.join(building.get_binaryen_bin(), 'wasm-dis')
 wasm_opt = os.path.join(building.get_binaryen_bin(), 'wasm-opt')
 
@@ -7578,10 +7579,19 @@ end
     self.run_process([EMCC, test, '--closure=1', '--closure-args', '--externs "' + externs + '"'])
 
   def test_toolchain_profiler(self):
+    # Verify some basic functionality of EMPROFILE
     environ = os.environ.copy()
     environ['EMPROFILE'] = '1'
-    # replaced subprocess functions should not cause errors
+
+    self.run_process([emprofile, '--reset'])
+    err = self.expect_fail([emprofile, '--graph'])
+    self.assertContained('No profiler logs were found', err)
+
     self.run_process([EMCC, test_file('hello_world.c')], env=environ)
+    self.assertEqual('hello, world!', self.run_js('a.out.js').strip())
+
+    self.run_process([emprofile, '--graph'])
+    self.assertTrue(glob.glob('toolchain_profiler.results*.html'))
 
   def test_noderawfs(self):
     fopen_write = open(test_file('asmfs', 'fopen_write.cpp')).read()
