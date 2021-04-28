@@ -1,4 +1,4 @@
-#include "libc.h"
+#include <unistd.h>
 
 #ifdef __EMSCRIPTEN__
 #include <stdlib.h>

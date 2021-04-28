@@ -600,6 +600,7 @@ class NoExceptLibrary(Library):
 class MuslInternalLibrary(Library):
   includes = [
     ['system', 'lib', 'libc', 'musl', 'src', 'internal'],
+    ['system', 'lib', 'libc', 'musl', 'src', 'include'],
   ]
 
   cflags = [
@@ -679,7 +680,7 @@ class libc(AsanInstrumentedLibrary, MuslInternalLibrary, MTLibrary):
     ignore = [
         'ipc', 'passwd', 'thread', 'signal', 'sched', 'ipc', 'time', 'linux',
         'aio', 'exit', 'legacy', 'mq', 'search', 'setjmp', 'env',
-        'ldso'
+        'ldso', 'malloc'
     ]
 
     # individual files
@@ -690,9 +691,10 @@ class libc(AsanInstrumentedLibrary, MuslInternalLibrary, MTLibrary):
         'gethostbyname2_r.c', 'gethostbyname_r.c', 'gethostbyname2.c',
         'alarm.c', 'syscall.c', '_exit.c', 'popen.c',
         'getgrouplist.c', 'initgroups.c', 'wordexp.c', 'timer_create.c',
-        'faccessat.c',
+        'faccessat.c', 'getentropy.c',
         # 'process' exclusion
-        'fork.c', 'vfork.c', 'posix_spawn.c', 'posix_spawnp.c', 'execve.c', 'waitid.c', 'system.c'
+        'fork.c', 'vfork.c', 'posix_spawn.c', 'posix_spawnp.c', 'execve.c', 'waitid.c', 'system.c',
+        '_Fork.c',
     ]
 
     ignore += LIBC_SOCKETS
@@ -737,11 +739,16 @@ class libc(AsanInstrumentedLibrary, MuslInternalLibrary, MTLibrary):
           'ctime.c',
           'gmtime.c',
           'localtime.c',
-          'nanosleep.c'
+          'nanosleep.c',
+          'clock_nanosleep.c',
         ])
     libc_files += files_in_path(
         path_components=['system', 'lib', 'libc', 'musl', 'src', 'legacy'],
         filenames=['getpagesize.c', 'err.c'])
+
+    libc_files += files_in_path(
+        path_components=['system', 'lib', 'libc', 'musl', 'src', 'linux'],
+        filenames=['getdents.c'])
 
     libc_files += files_in_path(
         path_components=['system', 'lib', 'libc', 'musl', 'src', 'env'],
@@ -819,6 +826,9 @@ class libc(AsanInstrumentedLibrary, MuslInternalLibrary, MTLibrary):
           'pthread_getschedparam.c', 'pthread_setschedparam.c',
           'pthread_setschedprio.c', 'pthread_atfork.c',
           'pthread_getcpuclockid.c',
+          'pthread_getattr_np.c',
+          'default_attr.c',
+          'lock_ptc.c',
         ])
       libc_files += files_in_path(
         path_components=['system', 'lib', 'pthread'],
@@ -846,7 +856,7 @@ class libprintf_long_double(libc):
 class libsockets(MuslInternalLibrary, MTLibrary):
   name = 'libsockets'
 
-  cflags = ['-Os', '-fno-builtin']
+  cflags = ['-Os', '-fno-builtin', '-Wno-shift-op-parentheses']
 
   def get_files(self):
     network_dir = shared.path_from_root('system', 'lib', 'libc', 'musl', 'src', 'network')

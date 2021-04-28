@@ -3064,7 +3064,7 @@ Var: 42
     export_count = get_data_export_count('test_dlfcn_self.wasm')
     # ensure there aren't too many globals; we don't want unnamed_addr
     self.assertGreater(export_count, 20)
-    self.assertLess(export_count, 56)
+    self.assertLess(export_count, 65)
 
   @needs_dylink
   def test_dlfcn_unique_sig(self):

@@ -110,7 +110,7 @@ int pthread_setcancelstate(int new, int* old) {
 }
 
 int _pthread_isduecanceled(struct pthread* pthread_ptr) {
-  return pthread_ptr->threadStatus == 2 /*canceled*/;
+  return pthread_ptr->cancel != 0;
 }
 
 void __pthread_testcancel() {
@@ -120,14 +120,6 @@ void __pthread_testcancel() {
   if (_pthread_isduecanceled(self)) {
     EM_ASM(throw 'Canceled!');
   }
-}
-
-int pthread_getattr_np(pthread_t t, pthread_attr_t* a) {
-  *a = (pthread_attr_t){0};
-  a->_a_detach = !!t->detached;
-  a->_a_stackaddr = (uintptr_t)t->stack;
-  a->_a_stacksize = t->stack_size - DEFAULT_STACK_SIZE;
-  return 0;
 }
 
 static uint32_t dummyZeroAddress = 0;

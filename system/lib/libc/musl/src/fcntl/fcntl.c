@@ -3,7 +3,6 @@
 #include <stdarg.h>
 #include <errno.h>
 #include "syscall.h"
-#include "libc.h"
 
 int fcntl(int fd, int cmd, ...)
 {

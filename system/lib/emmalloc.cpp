@@ -794,6 +794,7 @@ void *emmalloc_memalign(size_t alignment, size_t size)
   return ptr;
 }
 extern __typeof(emmalloc_memalign) emscripten_builtin_memalign __attribute__((alias("emmalloc_memalign")));
+extern __typeof(emmalloc_memalign) __libc_memalign __attribute__((alias("emmalloc_memalign")));
 
 void * EMMALLOC_EXPORT memalign(size_t alignment, size_t size)
 {
@@ -812,6 +813,7 @@ void *emmalloc_malloc(size_t size)
   return emmalloc_memalign(MALLOC_ALIGNMENT, size);
 }
 extern __typeof(emmalloc_malloc) emscripten_builtin_malloc __attribute__((alias("emmalloc_malloc")));
+extern __typeof(emmalloc_malloc) __libc_malloc __attribute__((alias("emmalloc_malloc")));
 
 void * EMMALLOC_EXPORT malloc(size_t size)
 {
@@ -913,6 +915,7 @@ void emmalloc_free(void *ptr)
 #endif
 }
 extern __typeof(emmalloc_free) emscripten_builtin_free __attribute__((alias("emmalloc_free")));
+extern __typeof(emmalloc_free) __libc_free __attribute__((alias("emmalloc_free")));
 
 void EMMALLOC_EXPORT free(void *ptr)
 {
@@ -1133,6 +1136,7 @@ void *emmalloc_realloc(void *ptr, size_t size)
 {
   return emmalloc_aligned_realloc(ptr, MALLOC_ALIGNMENT, size);
 }
+extern __typeof(emmalloc_realloc) __libc_realloc __attribute__((alias("emmalloc_realloc")));
 
 void * EMMALLOC_EXPORT realloc(void *ptr, size_t size)
 {
@@ -1168,6 +1172,7 @@ void *emmalloc_calloc(size_t num, size_t size)
     memset(ptr, 0, bytes);
   return ptr;
 }
+extern __typeof(emmalloc_calloc) __libc_calloc __attribute__((alias("emmalloc_calloc")));
 
 void * EMMALLOC_EXPORT calloc(size_t num, size_t size)
 {

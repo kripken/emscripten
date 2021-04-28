@@ -22,6 +22,9 @@ Current Trunk
 -------------
 - The `RUNTIME_LINKED_LIBS` setting is now deprecated.  It's better to simply
   list dynamic library dependencies directly on the command line.
+- The version of musl libc used by emscripten was upgraded from v1.1.15 to
+  v1.2.2 (#13006).  There could be some minor size regressions (or gains)
+  due to changes in upstream musl code be we don't expect anything major.
 
 2.0.18: 04/23/2021
 ------------------

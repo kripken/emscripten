@@ -407,6 +407,7 @@ def main(args):
 
   internal_cflags = [
     '-I' + shared.path_from_root('system', 'lib', 'libc', 'musl', 'src', 'internal'),
+    '-I' + shared.path_from_root('system', 'lib', 'libc', 'musl', 'src', 'include'),
   ]
 
   # Look for structs in all passed headers.

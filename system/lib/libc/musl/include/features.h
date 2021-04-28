@@ -6,6 +6,7 @@
 #endif
 
 #if defined(_DEFAULT_SOURCE) && !defined(_BSD_SOURCE)
+#error YYY
 #define _BSD_SOURCE 1
 #endif
 
@@ -24,6 +25,8 @@
 
 #if __STDC_VERSION__ >= 199901L || defined(__cplusplus)
 #define __inline inline
+#elif !defined(__GNUC__)
+#define __inline
 #endif
 
 #if __STDC_VERSION__ >= 201112L
@@ -33,7 +36,6 @@
 #define _Noreturn
 #endif
 
-#define weak_alias(old, new) \
-	extern __typeof(old) new __attribute__((__weak__, __alias__(#old)))
+#define __REDIR(x,y) __typeof__(x) x __asm__(#y)
 
 #endif

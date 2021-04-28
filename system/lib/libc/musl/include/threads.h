@@ -20,6 +20,11 @@ typedef void (*tss_dtor_t)(void *);
 #define __NEED_cnd_t
 #define __NEED_mtx_t
 
+// XXX Emscripten: Fix musl libc issue, where the above defines are wrong, but instead should be the following: (https://github.com/emscripten-core/emscripten/issues/5343)
+#define __NEED_pthread_cond_t
+#define __NEED_pthread_mutex_t
+// XXX
+
 #include <bits/alltypes.h>
 
 #define TSS_DTOR_ITERATIONS 4
@@ -75,10 +80,16 @@ int cnd_timedwait(cnd_t *__restrict, mtx_t *__restrict, const struct timespec *_
 int cnd_wait(cnd_t *, mtx_t *);
 
 int tss_create(tss_t *, tss_dtor_t);
-void tss_delete(tss_t key);
+void tss_delete(tss_t);
 
 int tss_set(tss_t, void *);
 void *tss_get(tss_t);
+
+#if _REDIR_TIME64
+__REDIR(thrd_sleep, __thrd_sleep_time64);
+__REDIR(mtx_timedlock, __mtx_timedlock_time64);
+__REDIR(cnd_timedwait, __cnd_timedwait_time64);
+#endif
 
 #ifdef __cplusplus
 }

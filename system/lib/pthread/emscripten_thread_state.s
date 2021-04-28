@@ -1,5 +1,5 @@
-.globaltype thread_id, i32
-thread_id:
+.globaltype thread_ptr, i32
+thread_ptr:
 
 .globaltype is_main_thread, i32
 is_main_thread:
@@ -7,17 +7,17 @@ is_main_thread:
 .globaltype is_runtime_thread, i32
 is_runtime_thread:
 
-.globl __pthread_self
-__pthread_self:
-  .functype __pthread_self () -> (i32)
-  global.get thread_id
+.globl __get_tp
+__get_tp:
+  .functype __get_tp () -> (i32)
+  global.get thread_ptr
   end_function
 
 .globl _emscripten_thread_init
 _emscripten_thread_init:
   .functype _emscripten_thread_init (i32, i32, i32) -> ()
   local.get 0
-  global.set thread_id
+  global.set thread_ptr
   local.get 1
   global.set is_main_thread
   local.get 2

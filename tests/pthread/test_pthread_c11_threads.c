@@ -42,9 +42,13 @@ int main(int argc, char* argv[]) {
   assert(thrd_equal(t1, t1));
 
   assert(thrd_join(t1, &result) == thrd_success);
+  printf("t1 joined\n");
   assert(thrd_join(t2, &result) == thrd_success);
+  printf("t2 joined\n");
   assert(thrd_join(t3, &result) == thrd_success);
+  printf("t3 joined\n");
   assert(thrd_join(t4, &result) == thrd_success);
+  printf("t4 joined\n");
   assert(result == 42);
   assert(counter == 1);
 

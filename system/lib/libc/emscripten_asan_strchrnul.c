@@ -12,4 +12,4 @@ char *__strchrnul(const char *s, int c)
 			return (char *) s;
 }
 
-extern __typeof(__strchrnul) strchrnul __attribute__((weak, alias("__strchrnul")));
+extern __typeof(__strchrnul) strchrnul __attribute__((__weak__, alias("__strchrnul")));

@@ -3,15 +3,14 @@ $__ashlti3
 $__emscripten_stdout_close
 $__emscripten_stdout_seek
 $__errno_location
-$__fflush_unlocked
 $__fwritex
+$__get_tp
 $__lock
 $__lockfile
 $__lshrti3
 $__ofl_lock
 $__ofl_unlock
 $__original_main
-$__pthread_self
 $__stdio_write
 $__towrite
 $__trunctfdf2
@@ -46,6 +45,7 @@ $printf_core
 $stackAlloc
 $stackRestore
 $stackSave
+$strnlen
 $vfprintf
 $wcrtomb
 $wctomb
