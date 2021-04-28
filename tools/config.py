@@ -169,7 +169,10 @@ def parse_config_file():
   normalize_config_settings()
 
 
-def generate_config(path, first_time=False):
+def generate_config(path):
+  if os.path.exists(path):
+    exit_with_error(f'config file already exists: `{path}`')
+
   # Note: repr is used to ensure the paths are escaped correctly on Windows.
   # The full string is replaced so that the template stays valid Python.
   config_data = open(path_from_root('tools', 'settings_template.py')).read().splitlines()
@@ -183,19 +186,14 @@ def generate_config(path, first_time=False):
   node = which('node') or which('nodejs') or 'node'
   config_data = config_data.replace('\'{{{ NODE }}}\'', repr(node))
 
-  abspath = os.path.abspath(os.path.expanduser(path))
   # write
-  with open(abspath, 'w') as f:
+  with open(path, 'w') as f:
     f.write(config_data)
 
-  if first_time:
-    print('''
-==============================================================================
-Welcome to Emscripten!
+  print('''\
+An Emscripten settings file has been generated at:
 
-This is the first time any of the Emscripten tools has been run.
-
-A settings file has been copied to %s, at absolute path: %s
+  %s
 
 It contains our best guesses for the important paths, which are:
 
@@ -203,11 +201,8 @@ It contains our best guesses for the important paths, which are:
   NODE_JS         = %s
   EMSCRIPTEN_ROOT = %s
 
-Please edit the file if any of those are incorrect.
-
-This command will now exit. When you are done editing those paths, re-run it.
-==============================================================================
-''' % (path, abspath, llvm_root, node, __rootpath__), file=sys.stderr)
+Please edit the file if any of those are incorrect.\
+''' % (path, llvm_root, node, __rootpath__), file=sys.stderr)
 
 
 # Emscripten configuration is done through the --em-config command line option
@@ -270,11 +265,12 @@ if not EM_CONFIG:
   elif os.path.exists(user_home_config):
     EM_CONFIG = user_home_config
   else:
+    # No config file found.  Set EM_CONFIG to a default value
+    # that will get reported in the error below.
     if root_is_writable():
-      generate_config(embedded_config, first_time=True)
+      EM_CONFIG = embedded_config
     else:
-      generate_config(user_home_config, first_time=True)
-    sys.exit(0)
+      EM_CONFIG = user_home_config
 
 argv_cache = consume_argv('--cache')
 if argv_cache:
@@ -286,9 +282,15 @@ if '\n' in EM_CONFIG:
   exit_with_error('Inline EM_CONFIG data no longer supported.  Please use a config file.')
 
 EM_CONFIG = os.path.expanduser(EM_CONFIG)
-logger.debug('emscripten config is located in ' + EM_CONFIG)
+
+if consume_argv('--generate-config'):
+  generate_config(EM_CONFIG)
+  sys.exit(0)
+
 if not os.path.exists(EM_CONFIG):
-  exit_with_error('emscripten config file not found: ' + EM_CONFIG)
+  exit_with_error(f'config file not found: {EM_CONFIG}.  Please create one by hand or run `emcc --generate-config`')
+
+logger.debug('emscripten config is located in ' + EM_CONFIG)
 
 # Emscripten compiler spawns other processes, which can reimport shared.py, so
 # make sure that those child processes get the same configuration file by

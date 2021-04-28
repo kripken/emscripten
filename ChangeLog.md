@@ -25,6 +25,10 @@ Current Trunk
 
 2.0.18: 04/23/2021
 ------------------
+- emscripten will no longer create a new config file if it doesn't find
+  one in the configured location.  Instead it will error out and point
+  the user to the `--generate-config` option in case that is what they
+  want.
 - The `makeBigInt` function was removed from the emscripten runtime since it
   had no internal users.
 - Restored support for --cache command line flag to configure location of the

@@ -2826,14 +2826,6 @@ def parse_args(newargs):
         options.output_eol = '\n'
       else:
         exit_with_error('Invalid value "' + style + '" to --output_eol!')
-    elif check_arg('--generate-config'):
-      optarg = consume_arg()
-      path = os.path.expanduser(optarg)
-      if os.path.exists(path):
-        exit_with_error('File ' + optarg + ' passed to --generate-config already exists!')
-      else:
-        config.generate_config(optarg)
-      should_exit = True
     # Record USE_PTHREADS setting because it controls whether --shared-memory is passed to lld
     elif arg == '-pthread':
       settings_changes.append('USE_PTHREADS=1')
