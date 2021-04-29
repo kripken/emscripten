@@ -48,18 +48,6 @@ _is_ar_cache = {}
 user_requested_exports = set()
 
 
-class ObjectFileInfo:
-  def __init__(self, returncode, output, defs=set(), undefs=set(), commons=set()):
-    self.returncode = returncode
-    self.output = output
-    self.defs = defs
-    self.undefs = undefs
-    self.commons = commons
-
-  def is_valid_for_nm(self):
-    return self.returncode == 0
-
-
 # llvm-ar appears to just use basenames inside archives. as a result, files
 # with the same basename will trample each other when we extract them. to help
 # warn of such situations, we warn if there are duplicate entries in the
@@ -204,6 +192,8 @@ def make_paths_absolute(f):
 # Runs llvm-nm for the given list of files.
 # The results are populated in nm_cache
 def llvm_nm_multiple(files):
+  global nm_cache
+
   with ToolchainProfiler.profile_block('llvm_nm_multiple'):
     if len(files) == 0:
       return []
@@ -221,7 +211,7 @@ def llvm_nm_multiple(files):
     if len(a_files) > 0:
       results = shared.run_multiple_processes([[LLVM_NM, a] for a in a_files], pipe_stdout=True, check=False)
       for i in range(len(results)):
-        nm_cache[a_files[i]] = parse_symbols(results[i])
+        nm_cache = { **nm_cache, **parse_llvm_nm_symbols(results[i], a_files[i]) }
 
     # Issue a single batch call for multiple .o files
     if len(o_files) > 0:
@@ -234,47 +224,9 @@ def llvm_nm_multiple(files):
       if results.returncode != 0:
         logger.debug('Subcommand ' + ' '.join(cmd) + ' failed with return code ' + str(results.returncode) + '! (An input file was corrupt?)')
 
-      results = results.stdout
+      nm_cache = { **nm_cache, **parse_llvm_nm_symbols(results.stdout) }
 
-      # llvm-nm produces a single listing of form
-      # file1.o:
-      # 00000001 T __original_main
-      #          U __stack_pointer
-      #
-      # file2.o:
-      # 0000005d T main
-      #          U printf
-      #
-      # ...
-      # so loop over the report to extract the results
-      # for each individual file.
-
-      filename = o_files[0]
-
-      # When we dispatched more than one file, we must manually parse
-      # the file result delimiters (like shown structured above)
-      if len(o_files) > 1:
-        file_start = 0
-        i = 0
-
-        while True:
-          nl = results.find('\n', i)
-          if nl < 0:
-            break
-          colon = results.rfind(':', i, nl)
-          if colon >= 0 and results[colon + 1] == '\n': # New file start?
-            nm_cache[filename] = parse_symbols(results[file_start:i - 1])
-            filename = results[i:colon].strip()
-            file_start = colon + 2
-          i = nl + 1
-
-        nm_cache[filename] = parse_symbols(results[file_start:])
-      else:
-        # We only dispatched a single file, so can parse all of the result directly
-        # to that file.
-        nm_cache[filename] = parse_symbols(results)
-
-  return [nm_cache[f] if f in nm_cache else ObjectFileInfo(1, '') for f in files]
+  return [nm_cache[f] if f in nm_cache else { 'defs': set(), 'undefs': set(), 'commons': set(), 'valid': False } for f in files]
 
 
 def llvm_nm(file):
@@ -494,13 +446,13 @@ def link_bitcode(args, target, force_archive_contents=False):
     new_symbols = llvm_nm(f)
     # Check if the object was valid according to llvm-nm. It also accepts
     # native object files.
-    if not new_symbols.is_valid_for_nm():
+    if not new_symbols['valid']:
       diagnostics.warning('emcc', 'object %s is not valid according to llvm-nm, cannot link', f)
       return False
     # Check the object is valid for us, and not a native object file.
     if not is_bitcode(f):
       exit_with_error('unknown file type: %s', f)
-    provided = new_symbols.defs.union(new_symbols.commons)
+    provided = new_symbols['defs'].union(new_symbols['commons'])
     do_add = force_add or not unresolved_symbols.isdisjoint(provided)
     if do_add:
       logger.debug('adding object %s to link (forced: %d)' % (f, force_add))
@@ -508,7 +460,7 @@ def link_bitcode(args, target, force_archive_contents=False):
       resolved_symbols.update(provided)
       # Update unresolved_symbols table by adding newly unresolved symbols and
       # removing newly resolved symbols.
-      unresolved_symbols.update(new_symbols.undefs.difference(resolved_symbols))
+      unresolved_symbols.update(new_symbols['undefs'].difference(resolved_symbols))
       unresolved_symbols.difference_update(provided)
       files_to_link.append(f)
     return do_add
@@ -617,15 +569,33 @@ def get_command_with_possible_response_file(cmd):
   return new_cmd
 
 
-def parse_symbols(output):
-  defs = []
-  undefs = []
-  commons = []
+# Parses the output of llnm-nm and returns a dictionary of symbols for each file in the output.
+# This function can be called either for a single file output listing ("llvm-nm a.o", or for
+# multiple files listing ("llvm-nm a.o b.o"). If called for a single file listing, the filename
+# that the listing is for is not necessarily specified in the output, in which case pass the
+# 'filename' parameter to specify what the listed file was.
+def parse_llvm_nm_symbols(output, filename=None):
+  # a dictionary from 'filename' -> { 'defs': set(), 'undefs': set(), 'commons': set(), 'valid': True }
+  symbols = {}
+  if filename:
+    cur_file = symbols[filename] = {
+      'defs': set(),
+      'undefs': set(),
+      'commons': set(),
+      'valid': True
+    }
   for line in output.split('\n'):
     if not line or line[0] == '#':
       continue
     # e.g.  filename.o:  , saying which file it's from
     if ':' in line:
+      filename = line[0:line.find(':')].strip()
+      cur_file = symbols[filename] = {
+        'defs': set(),
+        'undefs': set(),
+        'commons': set(),
+        'valid': True
+      }
       continue
     parts = [seg for seg in line.split(' ') if len(seg)]
     # pnacl-nm will print zero offsets for bitcode, and newer llvm-nm will print present symbols
@@ -637,14 +607,17 @@ def parse_symbols(output):
       # e.g. |00000630 t d_source_name|
       status, symbol = parts
       if status == 'U':
-        undefs.append(symbol)
+        assert cur_file
+        cur_file['undefs'] |= {symbol}
       elif status == 'C':
-        commons.append(symbol)
+        assert cur_file
+        cur_file['commons'] |= {symbol}
       elif status == status.upper():
+        assert cur_file
         # FIXME: using WTD in the previous line fails due to llvm-nm behavior on macOS,
         #        so for now we assume all uppercase are normally defined external symbols
-        defs.append(symbol)
-  return ObjectFileInfo(0, None, set(defs), set(undefs), set(commons))
+        cur_file['defs'] |= {symbol}
+  return symbols
 
 
 def emar(action, output_filename, filenames, stdout=None, stderr=None, env=None):
