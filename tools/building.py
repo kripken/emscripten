@@ -209,9 +209,9 @@ def llvm_nm_multiple(files):
     if results.returncode != 0:
       logger.debug('Subcommand ' + ' '.join(cmd) + ' failed with return code ' + str(results.returncode) + '! (An input file was corrupt?)')
 
-    nm_cache = { **nm_cache, **parse_llvm_nm_symbols(results.stdout, llvm_nm_files) }
+    nm_cache = {**nm_cache, **parse_llvm_nm_symbols(results.stdout, llvm_nm_files)}
 
-  return [nm_cache[f] if f in nm_cache else { 'defs': set(), 'undefs': set(), 'commons': set(), 'valid': False } for f in files]
+  return [nm_cache[f] if f in nm_cache else {'defs': set(), 'undefs': set(), 'commons': set(), 'valid': False} for f in files]
 
 
 def llvm_nm(file):
@@ -592,13 +592,13 @@ def parse_llvm_nm_symbols(output, input_filenames):
       # e.g. |00000630 t d_source_name|
       status, symbol = parts
       if status == 'U':
-        cur_file['undefs'] |= { symbol }
+        cur_file['undefs'] |= {symbol}
       elif status == 'C':
-        cur_file['commons'] |= { symbol }
+        cur_file['commons'] |= {symbol}
       elif status == status.upper():
         # FIXME: using WTD in the previous line fails due to llvm-nm behavior on macOS,
         #        so for now we assume all uppercase are normally defined external symbols
-        cur_file['defs'] |= { symbol }
+        cur_file['defs'] |= {symbol}
   return symbols
 
 
