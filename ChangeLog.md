@@ -58,6 +58,8 @@ Current Trunk
     1. Linking with `-llibc` rather than `-lc` will no longer work.
     2. Linking a library called `foo.a` via `-lfoo` will no longer work.
        (libraries found via `-l` have to start with `lib`)
+- Errors that occur on pthreads (e.g. uncaught exception) will now get re-thrown
+  on the main thread rather than simply being logged (#13666).
 - Use LLVM's new pass manager by default, as LLVM does. This changes a bunch of
   things about how LLVM optimizes and inlines, so it may cause noticeable
   changes in compile times, code size, and speed, either for better or for

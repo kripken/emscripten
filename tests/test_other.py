@@ -10402,3 +10402,14 @@ exec "$@"
     # negative case: foo is undefined in test_check_undefined.c
     err = self.expect_fail([EMCC, flag, '-sERROR_ON_UNDEFINED_SYMBOLS', test_file('other', 'test_check_undefined.c')])
     self.assertContained('undefined symbol: foo', err)
+
+  @node_pthreads
+  def test_pthread_js_exception(self):
+    # Ensure that JS exceptions propagate back to the main main thread and cause node
+    # to exit with an error.
+    self.set_setting('USE_PTHREADS')
+    self.set_setting('PROXY_TO_PTHREAD')
+    self.set_setting('EXIT_RUNTIME')
+    self.build(test_file('other', 'test_pthread_js_exception.c'))
+    err = self.run_js('test_pthread_js_exception.js', assert_returncode=NON_ZERO)
+    self.assertContained('missing is not defined', err)
