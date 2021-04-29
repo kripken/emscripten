@@ -1443,7 +1443,7 @@ def handle_reverse_deps(input_files):
   warn_on_unexported_main(symbolses)
 
   if len(symbolses) == 0:
-    symbolses.append({'defs':set(),'undefs':set()})
+    symbolses.append({'defs': set(), 'undefs': set()})
 
   # depend on exported functions
   for export in settings.EXPORTED_FUNCTIONS:
