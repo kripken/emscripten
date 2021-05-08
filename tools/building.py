@@ -192,8 +192,6 @@ def make_paths_absolute(f):
 # Runs llvm-nm for the given list of files.
 # The results are populated in nm_cache
 def llvm_nm_multiple(files):
-  global nm_cache
-
   with ToolchainProfiler.profile_block('llvm_nm_multiple'):
     if len(files) == 0:
       return []
@@ -209,7 +207,8 @@ def llvm_nm_multiple(files):
     if results.returncode != 0:
       logger.debug('Subcommand ' + ' '.join(cmd) + ' failed with return code ' + str(results.returncode) + '! (An input file was corrupt?)')
 
-    nm_cache = {**nm_cache, **parse_llvm_nm_symbols(results.stdout, llvm_nm_files)}
+    for key, value in parse_llvm_nm_symbols(results.stdout, llvm_nm_files):
+      nm_cache[key] = value
 
   return [nm_cache[f] if f in nm_cache else {'defs': set(), 'undefs': set(), 'commons': set(), 'valid': False} for f in files]
 
