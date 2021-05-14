@@ -454,7 +454,7 @@ pthread_t emscripten_main_browser_thread_id() {
   return main_browser_thread_id_;
 }
 
-int _emscripten_do_dispatch_to_thread(pthread_t target_thread, em_queued_call* call) {
+int _emscripten_do_dispatch_to_thread_global(pthread_t target_thread, em_queued_call* call, int drop) {
   assert(call);
 
   // #if PTHREADS_DEBUG // TODO: Create a debug version of pthreads library
@@ -492,7 +492,7 @@ int _emscripten_do_dispatch_to_thread(pthread_t target_thread, em_queued_call* c
 
     // If queue of the main browser thread is full, then we wait. (never drop messages for the main
     // browser thread)
-    if (target_thread == emscripten_main_browser_thread_id()) {
+    if (target_thread == emscripten_main_browser_thread_id() || drop == 0) {
       emscripten_futex_wait((void*)&q->call_queue_head, head, INFINITY);
       pthread_mutex_lock(&call_queue_lock);
       head = q->call_queue_head;
@@ -527,6 +527,11 @@ int _emscripten_do_dispatch_to_thread(pthread_t target_thread, em_queued_call* c
   q->call_queue_tail = new_tail;
   pthread_mutex_unlock(&call_queue_lock);
   return 0;
+}
+
+int _emscripten_do_dispatch_to_thread(
+  pthread_t target_thread, em_queued_call* call) {
+  return _emscripten_do_dispatch_to_thread_global(target_thread, call, 1);
 }
 
 void emscripten_async_run_in_main_thread(em_queued_call* call) {
@@ -859,8 +864,11 @@ em_queued_call* emscripten_async_waitable_run_in_main_runtime_thread_(
 }
 
 int _emscripten_call_on_thread(
-  int forceAsync,
+  int dispatchMode,
   pthread_t targetThread, EM_FUNC_SIGNATURE sig, void* func_ptr, void* satellite, ...) {
+  // dispatchMode==0 Synchronous if in the same thread_id, otherwise asynchronous.
+  // dispatchMode==1 Force asynchronous call even if in the same thread_id.
+  // dispatchMode==2 Always force a synchronous call.
   int numArguments = EM_FUNC_SIG_NUM_FUNC_ARGUMENTS(sig);
   em_queued_call* q = em_queued_call_malloc();
   assert(q);
@@ -905,13 +913,20 @@ int _emscripten_call_on_thread(
   q->calleeDelete = 1;
   // The called function will not be async if we are on the same thread; force
   // async if the user asked for that.
-  if (forceAsync) {
+  if (dispatchMode == 1) {
     EM_ASM({
       setTimeout(function() {
         __emscripten_do_dispatch_to_thread($0, $1);
       }, 0);
     }, targetThread, q);
     return 0;
+  } else if (dispatchMode == 2) {
+    q->calleeDelete = 0;
+    _emscripten_do_dispatch_to_thread_global(targetThread, q, 0);
+    emscripten_wait_for_call_v(q, INFINITY);
+    int res = q->returnValue.i;
+    em_queued_call_free(q);
+    return res;
   } else {
     return _emscripten_do_dispatch_to_thread(targetThread, q);
   }
