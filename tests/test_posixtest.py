@@ -7,6 +7,14 @@
    ./tests/third_party/posixtestsuite
 See
    https://github.com/emscripten-core/posixtestsuite
+
+Verify that it runs properly in musl:
+   cd ./tests/third_party/posixtestsuite
+   docker run -v $(pwd):/app -w /app -it alpine:latest \
+      apk add build-base && \
+      POSIX_TARGET=conformance/interfaces/pthread_join make LDFLAGS='-pthread'
+
+Where [INTERFACE_DIR] is for e.g.: pthread_join
 """
 
 import glob
@@ -125,6 +133,7 @@ flaky = {
   'test_pthread_cond_signal_1_1': 'flaky: https://github.com/emscripten-core/emscripten/issues/13283',
   'test_pthread_barrier_wait_2_1': 'flaky: https://github.com/emscripten-core/emscripten/issues/14508',
   'test_pthread_rwlock_unlock_3_1': 'Test fail: writer did not get write lock, when main release the lock',
+  'test_pthread_detach_1_2': 'Test fail: we were able to join a detached thread',
 }
 
 # Mark certain tests as disabled.  These are tests that are either flaky or never return.
@@ -148,6 +157,15 @@ def make_test(name, testfile, browser):
     if name in disabled:
       self.skipTest(disabled[name])
     args = ['-I' + os.path.join(testsuite_root, 'include'),
+            # TODO(kleisauke): Run with ASan. Note that this requires matching signatures, i.e:
+            # void *thread_func() -> void *thread_func(void *unused)
+            # void *a_thread_func() -> void *a_thread_func(void *unused)
+            # void *a_thread_function() -> void *a_thread_function(void *unused)
+            # void a_cleanup_func() -> void a_cleanup_func(void *unused)
+            # etc, etc.
+            # '-O0',
+            # '-g3',
+            # '-fsanitize=address',
             '-Werror',
             '-Wno-format-security',
             '-Wno-int-conversion',
