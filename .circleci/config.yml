@@ -173,6 +173,10 @@ commands:
       - emsdk-env
       - npm-install
       - run:
+          name: install pulseaudio
+          command: |
+            apt install --yes pulseaudio-utils
+      - run:
           name: download firefox
           command: |
             wget -O ~/ff.tar.bz2 "https://download.mozilla.org/?product=firefox-devedition-latest-ssl&os=linux64&lang=en-US"
@@ -243,12 +247,15 @@ commands:
           name: run tests
           environment:
             GALLIUM_DRIVER: softpipe # TODO: use the default llvmpipe when it supports more extensions
-            EMTEST_LACKS_SOUND_HARDWARE: "1"
+            EMTEST_LACKS_SOUND_HARDWARE: "0"
+            SDL_AUDIODRIVER: "pulseaudio"
+            PULSE_SINK: 0
             # OffscreenCanvas support is not yet done in Firefox.
             EMTEST_LACKS_OFFSCREEN_CANVAS: "1"
             EMTEST_DETECT_TEMPFILE_LEAKS: "0"
             DISPLAY: ":0"
           command: |
+            pactl list sinks short
             export EMTEST_BROWSER="$HOME/firefox/firefox -profile $HOME/tmp-firefox-profile/"
             # Start an X session. Openbox might be optional for now, but
             # an ICCCM/EWMH compliant window manager is potentially needed
