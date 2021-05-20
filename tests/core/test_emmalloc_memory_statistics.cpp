@@ -13,18 +13,18 @@ int main()
 	void *ptr3 = malloc(64*1024*1024);
 	void *ptr4 = malloc(16*1024);
 	void *ptr5 = malloc(2*1024*1024);
-	printf("%d\n", (int)(ptr && ptr2 && ptr3 && ptr4 && ptr5));
+	printf("valid allocs: %d\n", (int)(ptr && ptr2 && ptr3 && ptr4 && ptr5));
 	free(ptr2);
 	free(ptr4);
-	printf("%d\n", emmalloc_validate_memory_regions());
-	printf("%zu\n", emmalloc_dynamic_heap_size());
-	printf("%zu\n", emmalloc_free_dynamic_memory());
+	printf("emmalloc_validate_memory_regions: %d\n", emmalloc_validate_memory_regions());
+	printf("emmalloc_dynamic_heap_size      : %zu\n", emmalloc_dynamic_heap_size());
+	printf("emmalloc_free_dynamic_memory    : %zu\n", emmalloc_free_dynamic_memory());
 	size_t numFreeMemoryRegions = 0;
 	size_t freeMemorySizeMap[32];
 	numFreeMemoryRegions = emmalloc_compute_free_dynamic_memory_fragmentation_map(freeMemorySizeMap);
-	printf("%zu\n", numFreeMemoryRegions);
+	printf("numFreeMemoryRegions: %zu\n", numFreeMemoryRegions);
 	for(int i = 0; i < 32; ++i)
 		printf("%zu ", freeMemorySizeMap[i]);
 	printf("\n");
-	printf("%zu\n", round_to_4k(emmalloc_unclaimed_heap_memory()));
+	printf("emmalloc_unclaimed_heap_memory  : %zu\n", round_to_4k(emmalloc_unclaimed_heap_memory()));
 }
