@@ -916,6 +916,10 @@ int _emscripten_call_on_thread(
 // the main thread is waiting, we wake it up before waking up any workers.
 EMSCRIPTEN_KEEPALIVE void* _emscripten_main_thread_futex;
 
+// Stores the memory address that audio worklets are waiting on, if any. If
+// a worklet is waiting, we wake it up before waking up any workers.
+EMSCRIPTEN_KEEPALIVE void* _emscripten_audio_worklet_futex;
+
 static int _main_argc;
 static char** _main_argv;
 

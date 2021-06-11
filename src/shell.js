@@ -91,17 +91,20 @@ var ENVIRONMENT_IS_WORKER = {{{ ENVIRONMENT === 'worker' }}};
 #endif
 var ENVIRONMENT_IS_NODE = {{{ ENVIRONMENT === 'node' }}};
 var ENVIRONMENT_IS_SHELL = {{{ ENVIRONMENT === 'shell' }}};
+var ENVIRONMENT_IS_AUDIOWORKLET = {{{ ENVIRONMENT === 'worklet' }}};
 #else // ENVIRONMENT
 var ENVIRONMENT_IS_WEB = false;
 var ENVIRONMENT_IS_WORKER = false;
 var ENVIRONMENT_IS_NODE = false;
 var ENVIRONMENT_IS_SHELL = false;
+var ENVIRONMENT_IS_AUDIOWORKLET = false;
 ENVIRONMENT_IS_WEB = typeof window === 'object';
 ENVIRONMENT_IS_WORKER = typeof importScripts === 'function';
+ENVIRONMENT_IS_AUDIOWORKLET = typeof AudioWorkletGlobalScope === 'function';
 // N.b. Electron.js environment is simultaneously a NODE-environment, but
 // also a web environment.
 ENVIRONMENT_IS_NODE = typeof process === 'object' && typeof process.versions === 'object' && typeof process.versions.node === 'string';
-ENVIRONMENT_IS_SHELL = !ENVIRONMENT_IS_WEB && !ENVIRONMENT_IS_NODE && !ENVIRONMENT_IS_WORKER;
+ENVIRONMENT_IS_SHELL = !ENVIRONMENT_IS_WEB && !ENVIRONMENT_IS_NODE && !ENVIRONMENT_IS_WORKER && !ENVIRONMENT_IS_AUDIOWORKLET;
 #endif // ENVIRONMENT
 
 #if ASSERTIONS
@@ -343,6 +346,8 @@ if (ENVIRONMENT_IS_WEB || ENVIRONMENT_IS_WORKER) {
   }
 
   setWindowTitle = function(title) { document.title = title };
+} else if (ENVIRONMENT_IS_AUDIOWORKLET) {
+  // Nothing for worklets!
 } else
 #endif // ENVIRONMENT_MAY_BE_WEB || ENVIRONMENT_MAY_BE_WORKER
 {
@@ -406,7 +411,7 @@ assert(typeof Module['TOTAL_MEMORY'] === 'undefined', 'Module.TOTAL_MEMORY has b
 {{{ makeRemovedFSAssert('NODEFS') }}}
 
 #if USE_PTHREADS
-assert(ENVIRONMENT_IS_WEB || ENVIRONMENT_IS_WORKER || ENVIRONMENT_IS_NODE, 'Pthreads do not work in this environment yet (need Web Workers, or an alternative to them)');
+assert(ENVIRONMENT_IS_WEB || ENVIRONMENT_IS_WORKER || ENVIRONMENT_IS_NODE || ENVIRONMENT_IS_AUDIOWORKLET, 'Pthreads do not work in this environment yet (need Web Workers, or an alternative to them)');
 #endif // USE_PTHREADS
 #endif // ASSERTIONS
 
