@@ -52,13 +52,6 @@ if (typeof process === 'object' && typeof process.versions === 'object' && typeo
 
 #if ENVIRONMENT_MAY_BE_AUDIOWORKLET
 if (typeof AudioWorkletGlobalScope === "function") {
-  var oldRegisterProcessor = registerProcessor;
-  registerProcessor = function(name, cls) {
-    console.log(`register processor ${name}`)
-    globalThis[name] = cls;
-    oldRegisterProcessor(name, cls);
-  }
-
   Object.assign(globalThis, {
     Module: Module,
     self: globalThis, // Unlike DedicatedWorkerGlobalScope, AudioWorkletGlobalScope doesn't have 'self'
@@ -208,7 +201,13 @@ self.onmessage = function(e) {
 #endif
 #endif
 
-
+#if ENVIRONMENT_MAY_BE_AUDIOWORKLET
+      // When running as an AudioWorklet all the scripts are imported from the main thread (via .addModule)      
+      if({{{ makeAsmImportsAccessInPthread('ENVIRONMENT_IS_AUDIOWORKLET') }}}) { 
+        postMessage({'cmd': 'addmodule'});
+        return
+      }
+#endif
 
 #if MODULARIZE && EXPORT_ES6
       (e.data.urlOrBlob ? import(e.data.urlOrBlob) : import('./{{{ TARGET_JS_NAME }}}')).then(function(exports) {
@@ -254,6 +253,20 @@ self.onmessage = function(e) {
 #endif
 
 #endif
+    } else if (e.data.cmd === 'moduleloaded') {
+      #if MODULARIZE
+      #if MINIMAL_RUNTIME
+            {{{ EXPORT_NAME }}}(imports).then(function (instance) {
+              Module = instance;
+              moduleLoaded();
+            });
+      #else
+            {{{ EXPORT_NAME }}}(Module).then(function (instance) {
+              Module = instance;
+              moduleLoaded();
+            });
+      #endif
+      #endif
     } else if (e.data.cmd === 'objectTransfer') {
       Module['PThread'].receiveObjectTransfer(e.data);
     } else if (e.data.cmd === 'run') {
