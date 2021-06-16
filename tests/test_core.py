@@ -27,8 +27,8 @@ from tools import shared, building, config, webassembly
 from runner import RunnerCore, path_from_root, requires_native_clang, test_file
 from runner import skip_if, needs_dylink, no_windows, is_slow_test, create_file, parameterized
 from runner import env_modify, with_env_modify, disabled, node_pthreads
-from runner import read_file, read_binary
-from runner import NON_ZERO, WEBIDL_BINDER, EMBUILDER
+from runner import read_file, read_binary, require_node
+from runner import NON_ZERO, WEBIDL_BINDER, EMBUILDER, EMMAKE
 import clang_native
 
 # decorators for limiting which modes a test can run in
@@ -463,7 +463,7 @@ class TestCoreBase(RunnerCore):
   def test_cube2hash(self):
     # A good test of i64 math
     self.do_run('// empty file', 'Usage: hashstring <seed>',
-                libraries=self.get_library('third_party/cube2hash', ['libcube2hash.a'], configure=None),
+                libraries=self.get_library('third_party/cube2hash', ['libcube2hash.a'], configure=None, make=[EMMAKE, 'make']),
                 includes=[test_file('third_party/cube2hash')], assert_returncode=NON_ZERO)
 
     for text, output in [('fleefl', '892BDB6FD3F62E863D63DA55851700FDE3ACF30204798CE9'),
@@ -2519,13 +2519,8 @@ The current type of b is: 9
 
   def prep_dlfcn_main(self):
     self.set_setting('MAIN_MODULE')
+    self.set_setting('NODERAWFS')
     self.clear_setting('SIDE_MODULE')
-
-    create_file('lib_so_pre.js', '''
-    if (!Module['preRun']) Module['preRun'] = [];
-    Module['preRun'].push(function() { FS.createDataFile('/', 'liblib.so', %s, true, false, false); });
-''' % str(list(bytearray(read_binary('liblib.so')))))
-    self.emcc_args += ['--pre-js', 'lib_so_pre.js']
 
   def build_dlfcn_lib(self, filename):
     if self.is_wasm():
@@ -2906,7 +2901,6 @@ Var: 42
     for i in range(10):
       curr = '%d.so' % i
       shutil.copyfile('liblib.so', curr)
-      self.emcc_args += ['--embed-file', curr]
 
     self.prep_dlfcn_main()
     self.set_setting('INITIAL_MEMORY', '128mb')
@@ -3420,14 +3414,10 @@ ok
     shutil.move(indir('liblib.so'), indir('libb.so'))
 
     self.set_setting('MAIN_MODULE')
+    self.set_setting('NODERAWFS')
     self.clear_setting('SIDE_MODULE')
-    self.set_setting('EXPORT_ALL')
-    self.emcc_args += ['--embed-file', '.@/']
 
-    # XXX in wasm each lib load currently takes 5MB; default INITIAL_MEMORY=16MB is thus not enough
-    self.set_setting('INITIAL_MEMORY', '32mb')
-
-    src = r'''
+    create_file('main.c', r'''
       #include <dlfcn.h>
       #include <assert.h>
       #include <stddef.h>
@@ -3449,8 +3439,8 @@ ok
 
         return 0;
       }
-      '''
-    self.do_run(src, 'a: loaded\nb: loaded\na: loaded\n')
+      ''')
+    self.do_runf('main.c', 'a: loaded\nb: loaded\na: loaded\n')
 
   @needs_dylink
   @needs_non_trapping_float_to_int
@@ -5295,7 +5285,7 @@ Module['onRuntimeInitialized'] = function() {
     self.do_runf(test_file('fs/test_64bit.c'), 'success')
 
   def test_sigalrm(self):
-    self.do_runf(test_file('sigalrm.cpp'), '')
+    self.do_runf(test_file('test_sigalrm.c'), 'Received alarm!')
 
   @no_windows('https://github.com/emscripten-core/emscripten/issues/8882')
   def test_unistd_access(self):
@@ -5958,10 +5948,11 @@ void* operator new(size_t size) {
   def test_lua(self):
     self.emcc_args.remove('-Werror')
 
+    libs = self.get_library('third_party/lua', [Path('src/lua.o'), Path('src/liblua.a')], make=[EMMAKE, 'make', 'generic'], configure=None)
     self.do_run('',
                 'hello lua world!\n17\n1\n2\n3\n4\n7',
                 args=['-e', '''print("hello lua world!");print(17);for x = 1,4 do print(x) end;print(10-3)'''],
-                libraries=self.get_library('third_party/lua', [Path('src/lua.o'), Path('src/liblua.a')], make=['make', 'generic'], configure=None),
+                libraries=libs,
                 includes=[test_file('lua')],
                 output_nicerizer=lambda string, err: (string + err).replace('\n\n', '\n').replace('\n\n', '\n'))
 
@@ -6955,6 +6946,7 @@ someweirdtext
   })
   @sync
   def test_webidl(self, mode, allow_memory_growth):
+    self.uses_es6 = True
     if self.maybe_closure():
       # avoid closure minified names competing with our test code in the global name space
       self.set_setting('MODULARIZE')
@@ -6965,29 +6957,28 @@ someweirdtext
     self.assertExists('glue.cpp')
     self.assertExists('glue.js')
 
+    post_js = '\n\n'
+    if self.get_setting('MODULARIZE'):
+      post_js += 'var TheModule = Module();\n'
+    else:
+      post_js += 'var TheModule = Module;\n'
+    post_js += '\n\n'
+    if allow_memory_growth:
+      post_js += "var isMemoryGrowthAllowed = true;\n"
+    else:
+      post_js += "var isMemoryGrowthAllowed = false;\n"
+    post_js += read_file(test_file('webidl/post.js'))
+    post_js += '\n\n'
+    create_file('extern-post.js', post_js)
+
     # Export things on "TheModule". This matches the typical use pattern of the bound library
     # being used as Box2D.* or Ammo.*, and we cannot rely on "Module" being always present (closure may remove it).
-    self.emcc_args += ['-s', 'EXPORTED_FUNCTIONS=_malloc,_free', '--post-js', 'glue.js']
+    self.emcc_args += ['-s', 'EXPORTED_FUNCTIONS=_malloc,_free', '--post-js=glue.js', '--extern-post-js=extern-post.js']
     if allow_memory_growth:
       self.set_setting('ALLOW_MEMORY_GROWTH')
 
-    def post(filename):
-      with open(filename, 'a') as f:
-        f.write('\n\n')
-        if self.get_setting('MODULARIZE'):
-          f.write('var TheModule = Module();\n')
-        else:
-          f.write('var TheModule = Module;\n')
-        f.write('\n\n')
-        if allow_memory_growth:
-          f.write("var isMemoryGrowthAllowed = true;")
-        else:
-          f.write("var isMemoryGrowthAllowed = false;")
-        f.write(read_file(test_file('webidl/post.js')))
-        f.write('\n\n')
-
     output = test_file('webidl/output_%s.txt' % mode)
-    self.do_run_from_file(test_file('webidl/test.cpp'), output, post_build=post)
+    self.do_run_from_file(test_file('webidl/test.cpp'), output)
 
   ### Tests for tools
 
@@ -7225,20 +7216,16 @@ someweirdtext
   def test_modularize_closure_pre(self):
     # test that the combination of modularize + closure + pre-js works. in that mode,
     # closure should not minify the Module object in a way that the pre-js cannot use it.
+    create_file('post.js', 'var TheModule = Module();\n')
     self.emcc_args += [
       '--pre-js', test_file('core/modularize_closure_pre.js'),
+      '--extern-post-js=post.js',
       '--closure=1',
       '-g1',
       '-s',
       'MODULARIZE=1',
     ]
-
-    def post(filename):
-      with open(filename, 'a') as f:
-        f.write('\n\n')
-        f.write('var TheModule = Module();\n')
-
-    self.do_core_test('modularize_closure_pre.c', post_build=post)
+    self.do_core_test('modularize_closure_pre.c')
 
   @no_wasm2js('symbol names look different wasm2js backtraces')
   def test_emscripten_log(self):
@@ -7323,14 +7310,15 @@ someweirdtext
   def test_vswprintf_utf8(self):
     self.do_run_in_out_file_test('vswprintf_utf8.c')
 
+  # needs setTimeout which only node has
+  @require_node
   @no_asan('asan is not compatible with asyncify stack operations; may also need to not instrument asan_c_load_4, TODO')
-  def test_async(self):
+  def test_async_hello(self):
     # needs to flush stdio streams
     self.set_setting('EXIT_RUNTIME')
     self.set_setting('ASYNCIFY')
-    self.banned_js_engines = [config.SPIDERMONKEY_ENGINE, config.V8_ENGINE] # needs setTimeout which only node has
 
-    src = r'''
+    create_file('main.c',  r'''
 #include <stdio.h>
 #include <emscripten.h>
 void f(void *p) {
@@ -7345,12 +7333,20 @@ int main() {
   emscripten_sleep(100);
   printf("%d\n", i);
 }
-'''
+''')
 
-    self.do_run(src, 'HelloWorld!99')
+    self.do_runf('main.c', 'HelloWorld!99')
 
-    print('check bad ccall use')
-    src = r'''
+  @require_node
+  @no_asan('asyncify stack operations confuse asan')
+  def test_async_ccall_bad(self):
+    # check bad ccall use
+    # needs to flush stdio streams
+    self.set_setting('EXIT_RUNTIME')
+    self.set_setting('ASYNCIFY')
+    self.set_setting('ASSERTIONS')
+    self.set_setting('INVOKE_RUN', 0)
+    create_file('main.c', r'''
 #include <stdio.h>
 #include <emscripten.h>
 int main() {
@@ -7358,9 +7354,7 @@ int main() {
   emscripten_sleep(100);
   printf("World\n");
 }
-'''
-    self.set_setting('ASSERTIONS')
-    self.set_setting('INVOKE_RUN', 0)
+''')
     create_file('pre.js', '''
 Module['onRuntimeInitialized'] = function() {
   try {
@@ -7373,10 +7367,18 @@ Module['onRuntimeInitialized'] = function() {
 };
 ''')
     self.emcc_args += ['--pre-js', 'pre.js']
-    self.do_run(src, 'The call to main is running asynchronously.')
+    self.do_runf('main.c', 'The call to main is running asynchronously.')
 
-    print('check reasonable ccall use')
-    src = r'''
+  @require_node
+  @no_asan('asyncify stack operations confuse asan')
+  def test_async_ccall_good(self):
+    # check reasonable ccall use
+    # needs to flush stdio streams
+    self.set_setting('EXIT_RUNTIME')
+    self.set_setting('ASYNCIFY')
+    self.set_setting('ASSERTIONS')
+    self.set_setting('INVOKE_RUN', 0)
+    create_file('main.c', r'''
 #include <stdio.h>
 #include <emscripten.h>
 int main() {
@@ -7384,32 +7386,36 @@ int main() {
   emscripten_sleep(100);
   printf("World\n");
 }
-'''
+''')
     create_file('pre.js', '''
 Module['onRuntimeInitialized'] = function() {
   ccall('main', null, ['number', 'string'], [2, 'waka'], { async: true });
 };
 ''')
-    self.do_run(src, 'HelloWorld')
+    self.emcc_args += ['--pre-js', 'pre.js']
+    self.do_runf('main.c', 'HelloWorld')
 
+  @no_asan('asyncify stack operations confuse asan')
+  def test_async_ccall_promise(self):
     print('check ccall promise')
+    self.set_setting('ASYNCIFY')
+    self.set_setting('ASSERTIONS')
+    self.set_setting('INVOKE_RUN', 0)
     self.set_setting('EXPORTED_FUNCTIONS', ['_stringf', '_floatf'])
-    src = r'''
+    create_file('main.c', r'''
 #include <stdio.h>
 #include <emscripten.h>
-extern "C" {
-  const char* stringf(char* param) {
-    emscripten_sleep(20);
-    printf("%s", param);
-    return "second";
-  }
-  double floatf() {
-    emscripten_sleep(20);
-    emscripten_sleep(20);
-    return 6.4;
-  }
+const char* stringf(char* param) {
+  emscripten_sleep(20);
+  printf("%s", param);
+  return "second";
 }
-'''
+double floatf() {
+  emscripten_sleep(20);
+  emscripten_sleep(20);
+  return 6.4;
+}
+''')
     create_file('pre.js', r'''
 Module['onRuntimeInitialized'] = function() {
   ccall('stringf', 'string', ['string'], ['first\n'], { async: true })
@@ -7419,7 +7425,8 @@ Module['onRuntimeInitialized'] = function() {
     });
 };
 ''')
-    self.do_run(src, 'first\nsecond\n6.4')
+    self.emcc_args += ['--pre-js', 'pre.js']
+    self.do_runf('main.c', 'first\nsecond\n6.4')
 
   @no_asan('asyncify stack operations confuse asan')
   def test_fibers_asyncify(self):
@@ -7498,7 +7505,7 @@ Module['onRuntimeInitialized'] = function() {
     self.set_setting('ASYNCIFY')
     self.set_setting('ASYNCIFY_IMPORTS', ['suspend'])
     self.set_setting('ASSERTIONS')
-    self.do_core_test('test_asyncify_assertions.cpp')
+    self.do_core_test('test_asyncify_assertions.c', assert_returncode=NON_ZERO)
 
   @no_lsan('leaks asyncify stack during exit')
   @no_asan('leaks asyncify stack during exit')
@@ -7507,6 +7514,8 @@ Module['onRuntimeInitialized'] = function() {
     self.set_setting('ASSERTIONS')
     self.set_setting('EXIT_RUNTIME', 1)
     self.do_core_test('test_asyncify_during_exit.cpp', assert_returncode=1)
+    print('NO_ASYNC')
+    self.do_core_test('test_asyncify_during_exit.cpp', emcc_args=['-DNO_ASYNC'], out_suffix='_no_async')
 
   @no_asan('asyncify stack operations confuse asan')
   @no_wasm2js('TODO: lazy loading in wasm2js')
@@ -8012,23 +8021,17 @@ NODEFS is no longer included by default; build with -lnodefs.js
   })
   @no_wasm2js('TODO: sanitizers in wasm2js')
   def test_ubsan_full_stack_trace(self, g_flag, expected_output):
-    self.emcc_args += ['-fsanitize=null', g_flag]
-    self.set_setting('ALLOW_MEMORY_GROWTH')
-
     if g_flag == '-gsource-map':
       if not self.is_wasm():
         self.skipTest('wasm2js has no source map support')
       elif '-Oz' in self.emcc_args:
         self.skipTest('-Oz breaks stack traces')
 
-    def modify_env(filename):
-      contents = read_file(filename)
-      contents = 'Module = {UBSAN_OPTIONS: "print_stacktrace=1"};' + contents
-      with open(filename, 'w') as f:
-        f.write(contents)
-
+    create_file('pre.js', 'Module = {UBSAN_OPTIONS: "print_stacktrace=1"};')
+    self.emcc_args += ['-fsanitize=null', g_flag, '--pre-js=pre.js']
+    self.set_setting('ALLOW_MEMORY_GROWTH')
     self.do_runf(test_file('core/test_ubsan_full_null_ref.cpp'),
-                 post_build=modify_env, assert_all=True, expected_output=expected_output)
+                 assert_all=True, expected_output=expected_output)
 
   @no_wasm2js('TODO: sanitizers in wasm2js')
   def test_ubsan_typeinfo_eq(self):
@@ -8153,23 +8156,16 @@ NODEFS is no longer included by default; build with -lnodefs.js
   @no_safe_heap('asan does not work with SAFE_HEAP')
   @no_wasm2js('TODO: ASAN in wasm2js')
   def test_asan_modularized_with_closure(self):
-    self.emcc_args.append('-fsanitize=address')
+    # the bug is that createModule() returns undefined, instead of the
+    # proper Promise object.
+    create_file('post.js', 'if (!(createModule() instanceof Promise)) throw "Promise was not returned :(";\n')
+    self.emcc_args += ['-fsanitize=address', '--extern-post-js=post.js']
     self.set_setting('MODULARIZE')
     self.set_setting('EXPORT_NAME', 'createModule')
     self.set_setting('USE_CLOSURE_COMPILER')
     self.set_setting('ALLOW_MEMORY_GROWTH')
     self.set_setting('INITIAL_MEMORY', '300mb')
-
-    def post(filename):
-      with open(filename, 'a') as f:
-        f.write('\n\n')
-        # the bug is that createModule() returns undefined, instead of the
-        # proper Promise object.
-        f.write('if (!(createModule() instanceof Promise)) throw "Promise was not returned :(";\n')
-
-    self.do_runf(test_file('hello_world.c'),
-                 post_build=post,
-                 expected_output='hello, world!')
+    self.do_runf(test_file('hello_world.c'), expected_output='hello, world!')
 
   @no_asan('SAFE_HEAP cannot be used with ASan')
   def test_safe_heap_user_js(self):

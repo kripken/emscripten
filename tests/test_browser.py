@@ -21,7 +21,7 @@ from pathlib import Path
 from urllib.request import urlopen
 
 from runner import BrowserCore, RunnerCore, path_from_root, has_browser, EMTEST_BROWSER, Reporting
-from runner import create_file, parameterized, ensure_dir, disabled, test_file, WEBIDL_BINDER
+from runner import create_file, parameterized, ensure_dir, disabled, test_file, WEBIDL_BINDER, EMMAKE
 from runner import read_file
 from tools import shared
 from tools import system_libs
@@ -128,6 +128,16 @@ def requires_asmfs(f):
     self.skipTest('ASMFS is looking for a maintainer')
     return f(self, *args, **kwargs)
 
+  return decorated
+
+
+def also_with_threads(f):
+  def decorated(self):
+    f(self)
+    if not os.environ.get('EMTEST_LACKS_THREAD_SUPPORT'):
+      print('(threads)')
+      self.emcc_args += ['-pthread']
+      f(self)
   return decorated
 
 
@@ -1737,7 +1747,7 @@ keydown(100);keyup(100); // trigger the end
       Path('Chapter_9/TextureWrap', 'CH09_TextureWrap.o'),
       Path('Chapter_10/MultiTexture', 'CH10_MultiTexture.o'),
       Path('Chapter_13/ParticleSystem', 'CH13_ParticleSystem.o'),
-    ], configure=None)
+    ], configure=None, make=[EMMAKE, 'make'])
 
     def book_path(*pathelems):
       return test_file('glbook', *pathelems)
@@ -2442,6 +2452,11 @@ void *getBindBuffer() {
   def test_emscripten_async_wget2(self):
     self.btest_exit('test_emscripten_async_wget2.cpp')
 
+  def test_emscripten_async_wget2_data(self):
+    create_file('hello.txt', 'Hello Emscripten!')
+    self.btest('test_emscripten_async_wget2_data.cpp', expected='0')
+    time.sleep(10)
+
   def test_emscripten_async_wget_side_module(self):
     self.run_process([EMCC, test_file('browser_module.cpp'), '-o', 'lib.wasm', '-O2', '-s', 'SIDE_MODULE', '-s', 'EXPORTED_FUNCTIONS=_one,_two'])
     self.btest_exit('browser_main.cpp', args=['-O2', '-s', 'MAIN_MODULE'], assert_returncode=8)
@@ -2593,15 +2608,18 @@ Module["preRun"].push(function () {
     self.btest(test_file('webgl_color_buffer_readpixels.cpp'), args=['-lGL'], expected='0')
 
   # Test for PR#5373 (https://github.com/emscripten-core/emscripten/pull/5373)
+  @requires_graphics_hardware
   def test_webgl_shader_source_length(self):
     for opts in [[], ['-s', 'FULL_ES2=1']]:
       print(opts)
       self.btest(test_file('webgl_shader_source_length.cpp'), args=opts + ['-lGL'], expected='0')
 
   # Tests calling glGetString(GL_UNMASKED_VENDOR_WEBGL).
+  @requires_graphics_hardware
   def test_webgl_unmasked_vendor_webgl(self):
     self.btest(test_file('webgl_unmasked_vendor_webgl.c'), args=['-lGL'], expected='0')
 
+  @requires_graphics_hardware
   def test_webgl2(self):
     for opts in [
       ['-s', 'MIN_CHROME_VERSION=0'],
@@ -2623,9 +2641,11 @@ Module["preRun"].push(function () {
     # (the testcase doesn't even use threads, but is compiled with thread support).
     self.btest(test_file('webgl2.cpp'), args=['-s', 'MAX_WEBGL_VERSION=2', '-lGL', '-s', 'USE_PTHREADS'], expected='0')
 
+  @requires_graphics_hardware
   def test_webgl2_objects(self):
     self.btest(test_file('webgl2_objects.cpp'), args=['-s', 'MAX_WEBGL_VERSION=2', '-lGL'], expected='0')
 
+  @requires_graphics_hardware
   def test_html5_webgl_api(self):
     for mode in [['-s', 'OFFSCREENCANVAS_SUPPORT', '-s', 'USE_PTHREADS', '-s', 'PROXY_TO_PTHREAD'],
                  ['-s', 'OFFSCREEN_FRAMEBUFFER', '-s', 'USE_PTHREADS', '-s', 'PROXY_TO_PTHREAD'],
@@ -2634,6 +2654,7 @@ Module["preRun"].push(function () {
         continue
       self.btest(test_file('html5_webgl.c'), args=['-s', 'MAX_WEBGL_VERSION=2', '-lGL'] + mode, expected='0')
 
+  @requires_graphics_hardware
   def test_webgl2_ubos(self):
     self.btest(test_file('webgl2_ubos.cpp'), args=['-s', 'MAX_WEBGL_VERSION=2', '-lGL'], expected='0')
 
@@ -2704,11 +2725,11 @@ Module["preRun"].push(function () {
 
   def test_wget(self):
     create_file('test.txt', 'emscripten')
-    self.btest(test_file('test_wget.c'), expected='1', args=['-s', 'ASYNCIFY'])
+    self.btest_exit(test_file('test_wget.c'), args=['-s', 'ASYNCIFY'])
 
   def test_wget_data(self):
     create_file('test.txt', 'emscripten')
-    self.btest(test_file('test_wget_data.c'), expected='1', args=['-O2', '-g2', '-s', 'ASYNCIFY'])
+    self.btest_exit(test_file('test_wget_data.c'), args=['-O2', '-g2', '-s', 'ASYNCIFY'])
 
   @parameterized({
     '': ([],),
@@ -4137,7 +4158,7 @@ window.close = function() {
 
   # Test that it is possible to send a signal via calling alarm(timeout), which in turn calls to the signal handler set by signal(SIGALRM, func);
   def test_sigalrm(self):
-    self.btest(test_file('sigalrm.cpp'), expected='0', args=['-O3'])
+    self.btest_exit(test_file('test_sigalrm.c'), args=['-O3'])
 
   def test_canvas_style_proxy(self):
     self.btest('canvas_style_proxy.c', expected='1', args=['--proxy-to-worker', '--shell-file', test_file('canvas_style_proxy_shell.html'), '--pre-js', test_file('canvas_style_proxy_pre.js')])
@@ -4231,12 +4252,15 @@ window.close = function() {
     shutil.move('test.wasm', Path('cdn/test.wasm'))
     self.run_browser('test.html', '', '/report_result?0')
 
+  @also_with_threads
   def test_utf8_textdecoder(self):
     self.btest_exit('benchmark_utf8.cpp', 0, args=['--embed-file', test_file('utf8_corpus.txt') + '@/utf8_corpus.txt', '-s', 'EXPORTED_RUNTIME_METHODS=[UTF8ToString]'])
 
+  @also_with_threads
   def test_utf16_textdecoder(self):
     self.btest_exit('benchmark_utf16.cpp', 0, args=['--embed-file', test_file('utf16_corpus.txt') + '@/utf16_corpus.txt', '-s', 'EXPORTED_RUNTIME_METHODS=[UTF16ToString,stringToUTF16,lengthBytesUTF16]'])
 
+  @also_with_threads
   def test_TextDecoder(self):
     self.btest('browser_test_hello_world.c', '0', args=['-s', 'TEXTDECODER=0'])
     just_fallback = os.path.getsize('test.js')
@@ -4244,7 +4268,13 @@ window.close = function() {
     td_with_fallback = os.path.getsize('test.js')
     self.btest('browser_test_hello_world.c', '0', args=['-s', 'TEXTDECODER=2'])
     td_without_fallback = os.path.getsize('test.js')
-    self.assertLess(td_without_fallback, just_fallback)
+    # pthread TextDecoder support is more complex due to
+    # https://github.com/whatwg/encoding/issues/172
+    # and therefore the expected code size win there is actually a loss
+    if '-pthread' not in self.emcc_args:
+      self.assertLess(td_without_fallback, just_fallback)
+    else:
+      self.assertGreater(td_without_fallback, just_fallback)
     self.assertLess(just_fallback, td_with_fallback)
 
   def test_small_js_flags(self):
@@ -4260,6 +4290,7 @@ window.close = function() {
   @no_chrome('see https://crbug.com/961765')
   @requires_threads
   @requires_offscreen_canvas
+  @requires_graphics_hardware
   def test_webgl_offscreen_canvas_in_pthread(self):
     for args in [[], ['-DTEST_CHAINED_WEBGL_CONTEXT_PASSING']]:
       self.btest('gl_in_pthread.cpp', expected='1', args=args + ['-s', 'USE_PTHREADS', '-s', 'PTHREAD_POOL_SIZE=2', '-s', 'OFFSCREENCANVAS_SUPPORT', '-lGL'])
@@ -4268,6 +4299,7 @@ window.close = function() {
   # -DTEST_MAIN_THREAD_EXPLICIT_COMMIT: Test the same (WebGL on main thread after pthread), but by using explicit .commit() to swap on the main thread instead of implicit "swap when rAF ends" logic
   @requires_threads
   @requires_offscreen_canvas
+  @requires_graphics_hardware
   @disabled('This test is disabled because current OffscreenCanvas does not allow transfering it after a rendering context has been created for it.')
   def test_webgl_offscreen_canvas_in_mainthread_after_pthread(self):
     for args in [[], ['-DTEST_MAIN_THREAD_EXPLICIT_COMMIT']]:
@@ -4275,6 +4307,7 @@ window.close = function() {
 
   @requires_threads
   @requires_offscreen_canvas
+  @requires_graphics_hardware
   def test_webgl_offscreen_canvas_only_in_pthread(self):
     self.btest('gl_only_in_pthread.cpp', expected='0', args=['-s', 'USE_PTHREADS', '-s', 'PTHREAD_POOL_SIZE', '-s', 'OFFSCREENCANVAS_SUPPORT', '-lGL', '-s', 'OFFSCREEN_FRAMEBUFFER'])
 
@@ -4382,6 +4415,7 @@ window.close = function() {
   # -DTEST_OFFSCREEN_CANVAS=2: Tests that if a WebGL context is created on a pthread that has the canvas transferred to it via automatic transferring of Module.canvas when EMSCRIPTEN_PTHREAD_TRANSFERRED_CANVASES is not defined, then OffscreenCanvas is also used
   @requires_threads
   @requires_offscreen_canvas
+  @requires_graphics_hardware
   def test_webgl_offscreen_canvas_in_proxied_pthread(self):
     for asyncify in [0, 1]:
       cmd = ['-s', 'USE_PTHREADS', '-s', 'OFFSCREENCANVAS_SUPPORT', '-lGL', '-s', 'GL_DEBUG', '-s', 'PROXY_TO_PTHREAD']

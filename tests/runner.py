@@ -101,6 +101,7 @@ TEST_ROOT = path_from_root('tests')
 WEBIDL_BINDER = shared.bat_suffix(path_from_root('tools/webidl_binder'))
 
 EMBUILDER = shared.bat_suffix(path_from_root('embuilder'))
+EMMAKE = shared.bat_suffix(path_from_root('emmake'))
 
 
 if EMTEST_VERBOSE:
@@ -619,14 +620,13 @@ class RunnerCore(unittest.TestCase, metaclass=RunnerMeta):
     es_check_env = os.environ.copy()
     es_check_env['PATH'] = os.path.dirname(config.NODE_JS[0]) + os.pathsep + es_check_env['PATH']
     try:
-      shared.run_process(es_check + ['es5', os.path.abspath(filename)], stderr=PIPE, env=es_check_env)
+      shared.run_process(es_check + ['es5', os.path.abspath(filename), '--quiet'], stderr=PIPE, env=es_check_env)
     except subprocess.CalledProcessError as e:
       print(e.stderr)
       self.fail('es-check failed to verify ES5 output compliance')
 
   # Build JavaScript code from source code
-  def build(self, filename, libraries=[], includes=[], force_c=False,
-            post_build=None, js_outfile=True, emcc_args=[]):
+  def build(self, filename, libraries=[], includes=[], force_c=False, js_outfile=True, emcc_args=[]):
     suffix = '.js' if js_outfile else '.wasm'
     compiler = [compiler_for(filename, force_c)]
     if compiler[0] == EMCC:
@@ -650,9 +650,6 @@ class RunnerCore(unittest.TestCase, metaclass=RunnerMeta):
     self.assertExists(output)
     if js_outfile and not self.uses_es6:
       self.verify_es5(output)
-
-    if post_build:
-      post_build(output)
 
     if js_outfile and self.uses_memory_init_file():
       src = read_file(output)
@@ -848,7 +845,9 @@ class RunnerCore(unittest.TestCase, metaclass=RunnerMeta):
 
   def get_library(self, name, generated_libs, configure=['sh', './configure'],
                   configure_args=[], make=['make'], make_args=None,
-                  env_init={}, cache_name_extra='', native=False):
+                  env_init=None, cache_name_extra='', native=False):
+    if env_init is None:
+      env_init = {}
     if make_args is None:
       make_args = ['-j', str(shared.get_num_cores())]
 
@@ -878,9 +877,12 @@ class RunnerCore(unittest.TestCase, metaclass=RunnerMeta):
       # Avoid += so we don't mutate the default arg
       configure = configure + configure_args
 
+    cflags = ' '.join(self.get_emcc_args())
+    env_init.setdefault('CFLAGS', cflags)
+    env_init.setdefault('CXXFLAGS', cflags)
     return build_library(name, build_dir, output_dir, generated_libs, configure,
                          make, make_args, self.library_cache,
-                         cache_name, env_init=env_init, native=native, cflags=self.get_emcc_args())
+                         cache_name, env_init=env_init, native=native)
 
   def clear(self):
     delete_contents(self.get_dir())
@@ -1078,14 +1080,15 @@ class RunnerCore(unittest.TestCase, metaclass=RunnerMeta):
 
   def do_run_in_out_file_test(self, *path, **kwargs):
     srcfile = test_file(*path)
-    outfile = shared.unsuffixed(srcfile) + '.out'
+    out_suffix = kwargs.pop('out_suffix', '')
+    outfile = shared.unsuffixed(srcfile) + out_suffix + '.out'
     expected = read_file(outfile)
     self._build_and_run(srcfile, expected, **kwargs)
 
   ## Does a complete test - builds, runs, checks output, etc.
   def _build_and_run(self, filename, expected_output, args=[], output_nicerizer=None,
                      no_build=False,
-                     js_engines=None, post_build=None, libraries=[],
+                     js_engines=None, libraries=[],
                      includes=[],
                      assert_returncode=0, assert_identical=False, assert_all=False,
                      check_for_error=True, force_c=False, emcc_args=[]):
@@ -1094,7 +1097,7 @@ class RunnerCore(unittest.TestCase, metaclass=RunnerMeta):
     if no_build:
       js_file = filename
     else:
-      self.build(filename, libraries=libraries, includes=includes, post_build=post_build,
+      self.build(filename, libraries=libraries, includes=includes,
                  force_c=force_c, emcc_args=emcc_args)
       js_file = shared.unsuffixed(os.path.basename(filename)) + '.js'
     self.assertExists(js_file)
@@ -1649,8 +1652,7 @@ def build_library(name,
                   cache=None,
                   cache_name=None,
                   env_init={},
-                  native=False,
-                  cflags=[]):
+                  native=False):
   """Build a library and cache the result.  We build the library file
   once and cache it for all our tests. (We cache in memory since the test
   directory is destroyed and recreated for each test. Note that we cache
@@ -1669,12 +1671,13 @@ def build_library(name,
   shutil.copytree(source_dir, project_dir)
 
   generated_libs = [os.path.join(project_dir, lib) for lib in generated_libs]
+
   if native:
     env = clang_native.get_clang_native_env()
   else:
-    env = building.get_building_env(cflags=cflags)
-  for k, v in env_init.items():
-    env[k] = v
+    env = os.environ.copy()
+  env.update(env_init)
+
   if configure:
     if configure[0] == 'cmake':
       configure = [EMCMAKE] + configure
@@ -1695,6 +1698,9 @@ def build_library(name,
       print(read_file(Path(project_dir, 'configure_err')))
       print('-- end configure stderr --')
       raise
+    # if we run configure or cmake we don't then need any kind
+    # of special env when we run make below
+    env = None
 
   def open_make_out(mode='r'):
     return open(os.path.join(project_dir, 'make.out'), mode)

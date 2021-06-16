@@ -18,8 +18,15 @@ to browse the changes between the tags.
 
 See docs/process.md for more on how version tagging works.
 
-2.0.24
+2.0.25
 ------
+- Drop support for node versions older than v5.10.0.  We now assume the
+  existence of `Buffer.from` which was added in v5.10.0.  If it turns out
+  there is still a need to support these older node versions we can
+  add a polyfil under LEGACY_VM_SUPPORT (#14447).
+
+2.0.24 - 06/10/2021
+-------------------
 - Support `--preload-file` in Node.js. (#11785)
 - System libraries are now passed to the linker internally via `-lfoo` rather
   than using their full path.  This is in line with how gcc and clang pass system
@@ -48,9 +55,12 @@ See docs/process.md for more on how version tagging works.
 - Added support for running Emscripten-compiled native code in AudioWorklets as
   if they were regular pthreads. See `/tests/audioworklet/tone/` for a working 
   minimal example.
+- You can now explicitly request that an environment variable remain unset by
+  setting its value in `ENV` to `undefined`. This is useful for variables, such
+  as `LANG`, for which Emscripten normally provides a default value.
 
-2.0.23
-------
+2.0.23 - 05/26/2021
+-------------------
 - libcxxabi updated to llvm-12. (#14288)
 - libcxx updated to llvm-12. (#14249)
 - compiler-rt updated to llvm-12. (#14280)
