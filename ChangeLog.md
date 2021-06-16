@@ -45,6 +45,9 @@ See docs/process.md for more on how version tagging works.
   could prevent running in WASI VMs, but that has not been needed any more. A
   minor side effect you might see from this is a larger wasm size in standalone
   mode when not optimizing (but optimized builds are unaffected). (#14338)
+- Added support for running Emscripten-compiled native code in AudioWorklets as
+  if they were regular pthreads. See `/tests/audioworklet/tone/` for a working 
+  minimal example.
 
 2.0.23
 ------
