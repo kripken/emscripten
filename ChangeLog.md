@@ -24,6 +24,9 @@ See docs/process.md for more on how version tagging works.
   existence of `Buffer.from` which was added in v5.10.0.  If it turns out
   there is still a need to support these older node versions we can
   add a polyfil under LEGACY_VM_SUPPORT (#14447).
+- Added support for running Emscripten-compiled native code in AudioWorklets as
+  if they were regular pthreads. See `/tests/audioworklet/tone/` for a working 
+  minimal example.
 
 2.0.24 - 06/10/2021
 -------------------
@@ -52,9 +55,6 @@ See docs/process.md for more on how version tagging works.
   could prevent running in WASI VMs, but that has not been needed any more. A
   minor side effect you might see from this is a larger wasm size in standalone
   mode when not optimizing (but optimized builds are unaffected). (#14338)
-- Added support for running Emscripten-compiled native code in AudioWorklets as
-  if they were regular pthreads. See `/tests/audioworklet/tone/` for a working 
-  minimal example.
 - You can now explicitly request that an environment variable remain unset by
   setting its value in `ENV` to `undefined`. This is useful for variables, such
   as `LANG`, for which Emscripten normally provides a default value.
