@@ -48,18 +48,6 @@ _is_ar_cache = {}
 user_requested_exports = set()
 
 
-class ObjectFileInfo:
-  def __init__(self, returncode, output, defs=set(), undefs=set(), commons=set()):
-    self.returncode = returncode
-    self.output = output
-    self.defs = defs
-    self.undefs = undefs
-    self.commons = commons
-
-  def is_valid_for_nm(self):
-    return self.returncode == 0
-
-
 # llvm-ar appears to just use basenames inside archives. as a result, files
 # with the same basename will trample each other when we extract them. to help
 # warn of such situations, we warn if there are duplicate entries in the
@@ -208,71 +196,19 @@ def llvm_nm_multiple(files):
     # Run llvm-nm on files that we haven't cached yet
     llvm_nm_files = [f for f in files if f not in nm_cache]
 
-    # We can issue multiple files in a single llvm-nm calls, but only if those
-    # files are all .o or .bc files. Because of llvm-nm output format, we cannot
-    # llvm-nm multiple .a files in one call, but those must be individually checked.
+    cmd = [LLVM_NM] + llvm_nm_files
+    cmd = get_command_with_possible_response_file(cmd)
+    results = run_process(cmd, stdout=PIPE, stderr=PIPE, check=False)
 
-    o_files = [f for f in llvm_nm_files if os.path.splitext(f)[1].lower() in ['.o', '.obj', '.bc']]
-    a_files = [f for f in llvm_nm_files if f not in o_files]
+    # If one or more of the input files cannot be processed, llvm-nm will return a non-zero error code, but it will still process and print
+    # out all the other files in order. So even if process return code is non zero, we should always look at what we got to stdout.
+    if results.returncode != 0:
+      logger.debug('Subcommand ' + ' '.join(cmd) + ' failed with return code ' + str(results.returncode) + '! (An input file was corrupt?)')
 
-    # Issue parallel calls for .a files
-    if len(a_files) > 0:
-      results = shared.run_multiple_processes([[LLVM_NM, a] for a in a_files], pipe_stdout=True, check=False)
-      for i in range(len(results)):
-        nm_cache[a_files[i]] = parse_symbols(results[i])
+    for key, value in parse_llvm_nm_symbols(results.stdout, llvm_nm_files):
+      nm_cache[key] = value
 
-    # Issue a single batch call for multiple .o files
-    if len(o_files) > 0:
-      cmd = [LLVM_NM] + o_files
-      cmd = get_command_with_possible_response_file(cmd)
-      results = run_process(cmd, stdout=PIPE, stderr=PIPE, check=False)
-
-      # If one or more of the input files cannot be processed, llvm-nm will return a non-zero error code, but it will still process and print
-      # out all the other files in order. So even if process return code is non zero, we should always look at what we got to stdout.
-      if results.returncode != 0:
-        logger.debug('Subcommand ' + ' '.join(cmd) + ' failed with return code ' + str(results.returncode) + '! (An input file was corrupt?)')
-
-      results = results.stdout
-
-      # llvm-nm produces a single listing of form
-      # file1.o:
-      # 00000001 T __original_main
-      #          U __stack_pointer
-      #
-      # file2.o:
-      # 0000005d T main
-      #          U printf
-      #
-      # ...
-      # so loop over the report to extract the results
-      # for each individual file.
-
-      filename = o_files[0]
-
-      # When we dispatched more than one file, we must manually parse
-      # the file result delimiters (like shown structured above)
-      if len(o_files) > 1:
-        file_start = 0
-        i = 0
-
-        while True:
-          nl = results.find('\n', i)
-          if nl < 0:
-            break
-          colon = results.rfind(':', i, nl)
-          if colon >= 0 and results[colon + 1] == '\n': # New file start?
-            nm_cache[filename] = parse_symbols(results[file_start:i - 1])
-            filename = results[i:colon].strip()
-            file_start = colon + 2
-          i = nl + 1
-
-        nm_cache[filename] = parse_symbols(results[file_start:])
-      else:
-        # We only dispatched a single file, so can parse all of the result directly
-        # to that file.
-        nm_cache[filename] = parse_symbols(results)
-
-  return [nm_cache[f] if f in nm_cache else ObjectFileInfo(1, '') for f in files]
+  return [nm_cache[f] if f in nm_cache else {'defs': set(), 'undefs': set(), 'commons': set(), 'valid': False} for f in files]
 
 
 def llvm_nm(file):
@@ -497,13 +433,13 @@ def link_bitcode(args, target, force_archive_contents=False):
     new_symbols = llvm_nm(f)
     # Check if the object was valid according to llvm-nm. It also accepts
     # native object files.
-    if not new_symbols.is_valid_for_nm():
+    if not new_symbols['valid']:
       diagnostics.warning('emcc', 'object %s is not valid according to llvm-nm, cannot link', f)
       return False
     # Check the object is valid for us, and not a native object file.
     if not is_bitcode(f):
       exit_with_error('unknown file type: %s', f)
-    provided = new_symbols.defs.union(new_symbols.commons)
+    provided = new_symbols['defs'].union(new_symbols['commons'])
     do_add = force_add or not unresolved_symbols.isdisjoint(provided)
     if do_add:
       logger.debug('adding object %s to link (forced: %d)' % (f, force_add))
@@ -511,7 +447,7 @@ def link_bitcode(args, target, force_archive_contents=False):
       resolved_symbols.update(provided)
       # Update unresolved_symbols table by adding newly unresolved symbols and
       # removing newly resolved symbols.
-      unresolved_symbols.update(new_symbols.undefs.difference(resolved_symbols))
+      unresolved_symbols.update(new_symbols['undefs'].difference(resolved_symbols))
       unresolved_symbols.difference_update(provided)
       files_to_link.append(f)
     return do_add
@@ -620,15 +556,33 @@ def get_command_with_possible_response_file(cmd):
   return new_cmd
 
 
-def parse_symbols(output):
-  defs = []
-  undefs = []
-  commons = []
+# Parses the output of llnm-nm and returns a dictionary of symbols for each file in the output.
+# This function can be called either for a single file output listing ("llvm-nm a.o", or for
+# multiple files listing ("llvm-nm a.o b.o").
+# To map the symbols back to the original filenames that the function was called for, the
+# list of input functions should be passed in input_filenames.
+def parse_llvm_nm_symbols(output, input_filenames):
+  # a dictionary from 'filename' -> { 'defs': set(), 'undefs': set(), 'commons': set(), 'valid': True }
+  symbols = {}
+  cur_file = symbols[input_filenames[0]] = {
+    'defs': set(),
+    'undefs': set(),
+    'commons': set(),
+    'valid': True
+  }
   for line in output.split('\n'):
     if not line or line[0] == '#':
       continue
     # e.g.  filename.o:  , saying which file it's from
     if ':' in line:
+      filename = line[0:line.find(':')].strip()
+      if filename in input_filenames:
+        cur_file = symbols[filename] = {
+          'defs': set(),
+          'undefs': set(),
+          'commons': set(),
+          'valid': True
+        }
       continue
     parts = [seg for seg in line.split(' ') if len(seg)]
     # pnacl-nm will print zero offsets for bitcode, and newer llvm-nm will print present symbols
@@ -640,14 +594,14 @@ def parse_symbols(output):
       # e.g. |00000630 t d_source_name|
       status, symbol = parts
       if status == 'U':
-        undefs.append(symbol)
+        cur_file['undefs'] |= {symbol}
       elif status == 'C':
-        commons.append(symbol)
+        cur_file['commons'] |= {symbol}
       elif status == status.upper():
         # FIXME: using WTD in the previous line fails due to llvm-nm behavior on macOS,
         #        so for now we assume all uppercase are normally defined external symbols
-        defs.append(symbol)
-  return ObjectFileInfo(0, None, set(defs), set(undefs), set(commons))
+        cur_file['defs'] |= {symbol}
+  return symbols
 
 
 def emar(action, output_filename, filenames, stdout=None, stderr=None, env=None):
