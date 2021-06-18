@@ -5133,6 +5133,22 @@ window.close = function() {
   def test_full_js_library_strict(self):
     self.btest_exit(test_file('hello_world.c'), args=['-sINCLUDE_FULL_LIBRARY', '-sSTRICT_JS'])
 
+  # Tests audio worklets
+  @requires_threads
+  @requires_sound_hardware
+  def test_audio_worklet(self):
+    for closure in ['--closure=0', '--closure=1']:
+      self.btest(path_from_root('tests', 'audioworklet', 'futex', 'audioworklet_futex.cpp'),
+                 expected='1',
+                 args=['-s', 'USE_PTHREADS=1', '-s', 'ENVIRONMENT=web,worker,audioworklet', closure,
+                       '--post-js', path_from_root('tests', 'audioworklet', 'futex', 'audioworklet_futex_post.js')])
+      self.btest(path_from_root('tests', 'audioworklet', 'futex', 'audioworklet_futex.cpp'),
+                 expected='1',
+                 args=['-s', 'USE_PTHREADS=1', '-s', 'MODULARIZE=1', '-s',
+                       'EXPORT_NAME=MyModule', '-s', 'ENVIRONMENT=web,worker,audioworklet', closure,
+                       '--extern-post-js', path_from_root('tests', 'audioworklet', 'futex', 'audioworklet_futex_post.js'),
+                       '--shell-file', test_file('shell_that_launches_modularize.html')])
+
 
 EMRUN = path_from_root('emrun')
 
