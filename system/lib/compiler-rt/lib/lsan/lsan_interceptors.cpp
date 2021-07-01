@@ -33,6 +33,10 @@
 
 #include <stddef.h>
 
+#if SANITIZER_EMSCRIPTEN
+#define __ATTRP_C11_THREAD ((void*)(uptr)-1)
+#endif
+
 using namespace __lsan;
 
 extern "C" {
@@ -63,9 +67,9 @@ INTERCEPTOR(void, free, void *p) {
 }
 
 INTERCEPTOR(void*, calloc, uptr nmemb, uptr size) {
-  // This hack is not required for Fuchsia because there are no dlsym calls
+  // This hack is not required for Fuchsia and Emscripten because there are no dlsym calls
   // involved in setting up interceptors.
-#if !SANITIZER_FUCHSIA
+#if !SANITIZER_FUCHSIA && !SANITIZER_EMSCRIPTEN
   if (lsan_init_is_running) {
     // Hack: dlsym calls calloc before REAL(calloc) is retrieved from dlsym.
     const uptr kCallocPoolSize = 1024;
@@ -77,7 +81,7 @@ INTERCEPTOR(void*, calloc, uptr nmemb, uptr size) {
     CHECK(allocated < kCallocPoolSize);
     return mem;
   }
-#endif  // !SANITIZER_FUCHSIA
+#endif  // !SANITIZER_FUCHSIA && !SANITIZER_EMSCRIPTEN
   ENSURE_LSAN_INITED;
   GET_STACK_TRACE_MALLOC;
   return lsan_calloc(nmemb, size, stack);
@@ -316,7 +320,7 @@ INTERCEPTOR(void, _ZdaPvRKSt9nothrow_t, void *ptr, std::nothrow_t const&)
 
 ///// Thread initialization and finalization. /////
 
-#if !SANITIZER_NETBSD && !SANITIZER_FREEBSD && !SANITIZER_FUCHSIA
+#if !SANITIZER_NETBSD && !SANITIZER_FREEBSD && !SANITIZER_FUCHSIA  && !SANITIZER_EMSCRIPTEN
 static unsigned g_thread_finalize_key;
 
 static void thread_finalize(void *v) {
@@ -428,7 +432,7 @@ extern "C" void *__lsan_thread_start_func(void *arg) {
   void *param = p->param;
   // Wait until the last iteration to maximize the chance that we are the last
   // destructor to run.
-#if !SANITIZER_NETBSD && !SANITIZER_FREEBSD
+#if !SANITIZER_NETBSD && !SANITIZER_FREEBSD && !SANITIZER_EMSCRIPTEN
   if (pthread_setspecific(g_thread_finalize_key,
                           (void*)GetPthreadDestructorIterations())) {
     Report("LeakSanitizer: failed to set thread key.\n");
@@ -452,7 +456,11 @@ INTERCEPTOR(int, pthread_create, void *th, void *attr,
   ENSURE_LSAN_INITED;
   EnsureMainThreadIDIsCorrect();
   __sanitizer_pthread_attr_t myattr;
+#if SANITIZER_EMSCRIPTEN
+  if (!attr || attr == __ATTRP_C11_THREAD) {
+#else
   if (!attr) {
+#endif
     pthread_attr_init(&myattr);
     attr = &myattr;
   }
@@ -531,7 +539,7 @@ INTERCEPTOR(void, _exit, int status) {
 namespace __lsan {
 
 void InitializeInterceptors() {
-  // Fuchsia doesn't use interceptors that require any setup.
+  // Fuchsia and Emscripten doesn't use interceptors that require any setup.
 #if !SANITIZER_FUCHSIA && !SANITIZER_EMSCRIPTEN
   InitializeSignalInterceptors();
 
@@ -562,16 +570,15 @@ void InitializeInterceptors() {
   LSAN_MAYBE_INTERCEPT_PTHREAD_ATFORK;
 
   LSAN_MAYBE_INTERCEPT_STRERROR;
+#endif  // !SANITIZER_FUCHSIA && !SANITIZER_EMSCRIPTEN
 
-#if !SANITIZER_NETBSD && !SANITIZER_FREEBSD
+#if !SANITIZER_NETBSD && !SANITIZER_FREEBSD && !SANITIZER_FUCHSIA && !SANITIZER_EMSCRIPTEN
   if (pthread_key_create(&g_thread_finalize_key, &thread_finalize)) {
     Report("LeakSanitizer: failed to create thread key.\n");
     Die();
   }
 #endif
-
-#endif  // !SANITIZER_FUCHSIA
 }
 
 } // namespace __lsan
-#endif // SANITIZER_EMSCRIPTEN
+#endif // SANITIZER_POSIX
