@@ -12,24 +12,46 @@ from tools import config
 from tools import utils
 from subprocess import CalledProcessError
 
+# Print message to stderr and exit early.
+def error(message, exit_code=1, file=sys.stderr):
+  print(message, file=file)
+  sys.exit(exit_code)
 
-#
-# Main run() function
-#
-def run():
-  if len(sys.argv) < 2 or sys.argv[1] in ('--version', '--help'):
-    print('''\
+# Conditionally add a toolchain and run emulator.
+def create_command():
+  if len(sys.argv) < 2 or sys.argv[1] in ('--help', '--version'):
+    error('''\
 emcmake is a helper for cmake, setting various environment
 variables so that emcc etc. are used. Typical usage:
 
   emcmake cmake [FLAGS]
-''', file=sys.stderr)
-    return 1
+''')
+
+  unsupported = {
+    '--build',
+    '--install',
+    '--open',
+    '-E',
+    '--find-package',
+    '--help',
+    '--version',
+  }
 
   args = sys.argv[1:]
+  if len(args) < 2 or args[1] in unsupported:
+    return args
 
   def has_substr(args, substr):
     return any(substr in s for s in args)
+
+  # Check if it's called as a script argument, which is an unsupported case.
+  # Script arguments can lead with as many `-D` cases, and then
+  # have a `-P`.
+  index = 1
+  while index < len(args) and args[index].startswith('-D'):
+    index += 1
+  if index < len(args) and args[index].startswith('-P'):
+    return args
 
   # Append the Emscripten toolchain file if the user didn't specify one.
   if not has_substr(args, '-DCMAKE_TOOLCHAIN_FILE'):
@@ -48,8 +70,15 @@ variables so that emcc etc. are used. Typical usage:
     elif utils.which('ninja'):
       args += ['-G', 'Ninja']
     else:
-      print('emcmake: no compatible cmake generator found; Please install ninja or mingw32-make, or specify a generator explicitly using -G', file=sys.stderr)
-      return 1
+      error('emcmake: no compatible cmake generator found; Please install ninja or mingw32-make, or specify a generator explicitly using -G')
+
+  return args
+
+#
+# Main run() function
+#
+def run():
+  args = create_command()
 
   # CMake has a requirement that it wants sh.exe off PATH if MinGW Makefiles
   # is being used. This happens quite often, so do this automatically on
