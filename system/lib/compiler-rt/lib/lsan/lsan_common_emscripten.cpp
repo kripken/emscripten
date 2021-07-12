@@ -150,15 +150,6 @@ static void ProcessThreadsCallback(ThreadContextBase *tctx, void *arg) {
         // signal handler on alternate stack, or swapcontext was used).
         // Again, consider the entire stack range to be reachable.
         LOG_THREADS("WARNING: stack pointer not in stack range.\n");
-        uptr page_size = GetPageSizeCached();
-        int skipped = 0;
-        while (stack_begin < stack_end &&
-               !IsAccessibleMemoryRange(stack_begin, 1)) {
-          skipped++;
-          stack_begin += page_size;
-        }
-        LOG_THREADS("Skipped %d guard page(s) to obtain stack %p-%p.\n",
-                    skipped, stack_begin, stack_end);
       } else {
         // Shrink the stack range to ignore out-of-scope values.
         stack_begin = sp;
