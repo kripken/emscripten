@@ -6,8 +6,7 @@
  */
 
 #define _GNU_SOURCE
-#include "../internal/libc.h"
-#include "../internal/pthread_impl.h"
+
 #include <assert.h>
 #include <dirent.h>
 #include <errno.h>
@@ -34,6 +33,9 @@
 #include <emscripten.h>
 #include <emscripten/threading.h>
 #include <emscripten/stack.h>
+
+#include "libc.h"
+#include "pthread_impl.h"
 
 // With LLVM 3.6, C11 is the default compilation mode.
 // gets() is deprecated under that standard, but emcc
