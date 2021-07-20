@@ -2427,7 +2427,7 @@ var LibraryJSEvents = {
         // TODO: Perhaps autoResizeViewport should only be true if FBO 0 is currently active?
         autoResizeViewport = (prevViewport[0] === 0 && prevViewport[1] === 0 && prevViewport[2] === canvas.width && prevViewport[3] === canvas.height);
 #if GL_DEBUG
-        console.error('Resizing canvas from ' + canvas.width + 'x' + canvas.height + ' to ' + width + 'x' + height + '. Previous GL viewport size was ' 
+        err('Resizing canvas from ' + canvas.width + 'x' + canvas.height + ' to ' + width + 'x' + height + '. Previous GL viewport size was ' 
           + prevViewport + ', so autoResizeViewport=' + autoResizeViewport);
 #endif
       }
@@ -2435,7 +2435,7 @@ var LibraryJSEvents = {
       canvas.height = height;
       if (autoResizeViewport) {
 #if GL_DEBUG
-        console.error('Automatically resizing GL viewport to cover whole render target ' + width + 'x' + height);
+        err('Automatically resizing GL viewport to cover whole render target ' + width + 'x' + height);
 #endif
         // TODO: Add -s CANVAS_RESIZE_SETS_GL_VIEWPORT=0/1 option (default=1). This is commonly done and several graphics engines depend on this,
         // but this can be quite disruptive.
@@ -2447,7 +2447,7 @@ var LibraryJSEvents = {
       return {{{ cDefine('EMSCRIPTEN_RESULT_DEFERRED') }}}; // This will have to be done asynchronously
     } else {
 #if GL_DEBUG
-      console.error('canvas.controlTransferredOffscreen but we do not own the canvas, and do not know who has (no canvas.canvasSharedPtr present, an internal bug?)!\n');
+      err('canvas.controlTransferredOffscreen but we do not own the canvas, and do not know who has (no canvas.canvasSharedPtr present, an internal bug?)!\n');
 #endif
       return {{{ cDefine('EMSCRIPTEN_RESULT_UNKNOWN_TARGET') }}};
     }
@@ -2491,7 +2491,7 @@ var LibraryJSEvents = {
   emscripten_set_canvas_element_size__sig: 'iiii',
   emscripten_set_canvas_element_size: function(target, width, height) {
 #if GL_DEBUG
-    console.error('emscripten_set_canvas_element_size(target='+target+',width='+width+',height='+height);
+    err('emscripten_set_canvas_element_size(target='+target+',width='+width+',height='+height);
 #endif
     var canvas = findCanvasEventTarget(target);
     if (canvas) {
@@ -2505,7 +2505,7 @@ var LibraryJSEvents = {
   emscripten_set_canvas_element_size__sig: 'iiii',
   emscripten_set_canvas_element_size: function(target, width, height) {
 #if GL_DEBUG
-    console.error('emscripten_set_canvas_element_size(target='+target+',width='+width+',height='+height);
+    err('emscripten_set_canvas_element_size(target='+target+',width='+width+',height='+height);
 #endif
     var canvas = findCanvasEventTarget(target);
     if (!canvas) return {{{ cDefine('EMSCRIPTEN_RESULT_UNKNOWN_TARGET') }}};
@@ -2521,7 +2521,7 @@ var LibraryJSEvents = {
   $setCanvasElementSize__deps: ['emscripten_set_canvas_element_size'],
   $setCanvasElementSize: function(target, width, height) {
 #if GL_DEBUG
-    console.error('setCanvasElementSize(target='+target+',width='+width+',height='+height);
+    err('setCanvasElementSize(target='+target+',width='+width+',height='+height);
 #endif
     if (!target.controlTransferredOffscreen) {
       target.width = width;
@@ -2559,7 +2559,7 @@ var LibraryJSEvents = {
       {{{ makeSetValue('height', 0, 'canvas.height', 'i32') }}};
     } else {
 #if GL_DEBUG
-      console.error('canvas.controlTransferredOffscreen but we do not own the canvas, and do not know who has (no canvas.canvasSharedPtr present, an internal bug?)!\n');
+      err('canvas.controlTransferredOffscreen but we do not own the canvas, and do not know who has (no canvas.canvasSharedPtr present, an internal bug?)!\n');
 #endif
       return {{{ cDefine('EMSCRIPTEN_RESULT_UNKNOWN_TARGET') }}};
     }
@@ -2673,56 +2673,97 @@ var LibraryJSEvents = {
   },
 
   $polyfillSetImmediate__postset:
-    'var __setImmediate_id_counter = 0;\n' +
-    'var __setImmediate_queue = [];\n' +
-    'var __setImmediate_message_id = "_si";\n' +
-    'function __setImmediate_cb(e) {\n' +
-      'if (e.data === __setImmediate_message_id) {\n' +
-        'e.stopPropagation();\n' +
-        '__setImmediate_queue.shift()();\n' +
-        '++__setImmediate_id_counter;\n' +
+    'var emSetImmediate;\n' +
+    'var emClearImmediate;\n' +
+    'if (typeof setImmediate !== "undefined") {\n' +
+      'emSetImmediate = setImmediate;\n' +
+      'emClearImmediate = clearImmediate;\n' +
+    '} else if (typeof addEventListener === "function") {\n' +
+      'var __setImmediate_id_counter = 0;\n' +
+      'var __setImmediate_queue = [];\n' +
+      'var __setImmediate_message_id = "_si";\n' +
+      'function __setImmediate_cb(e) {\n' +
+        'if (e.data === __setImmediate_message_id) {\n' +
+          'e.stopPropagation();\n' +
+          '__setImmediate_queue.shift()();\n' +
+          '++__setImmediate_id_counter;\n' +
+        '}\n' +
       '}\n' +
-    '}\n' +
-    'if (typeof setImmediate === "undefined" && typeof addEventListener === "function") {\n' +
       'addEventListener("message", __setImmediate_cb, true);\n' +
-      'setImmediate = function(func) {\n' +
+      'emSetImmediate = function(func) {\n' +
         'postMessage(__setImmediate_message_id, "*");\n' +
         'return __setImmediate_id_counter + __setImmediate_queue.push(func) - 1;\n' +
       '}\n' +
-      'clearImmediate = /**@type{function(number=)}*/(function(id) {\n' +
+      'emClearImmediate = /**@type{function(number=)}*/(function(id) {\n' +
         'var index = id - __setImmediate_id_counter;\n' +
         'if (index >= 0 && index < __setImmediate_queue.length) __setImmediate_queue[index] = function() {};\n' + // must preserve the order and count of elements in the queue, so replace the pending callback with an empty function
       '})\n' +
     '}',
 
-  $polyfillSetImmediate: function() { /* nop, used for its postset to ensure setImmediate() polyfill is not duplicated between emscripten_set_immediate() and emscripten_set_immediate_loop() if application links to both of them.*/ },
+  $polyfillSetImmediate: function() {
+    // nop, used for its postset to ensure setImmediate() polyfill is
+    // not duplicated between emscripten_set_immediate() and
+    // emscripten_set_immediate_loop() if application links to both of them.
+  },
 
-  emscripten_set_immediate__deps: ['$polyfillSetImmediate'],
+  emscripten_set_immediate__deps: ['$polyfillSetImmediate', '$callUserCallback',
+#if !MINIMAL_RUNTIME
+    '$runtimeKeepalivePush', '$runtimeKeepalivePop',
+#endif
+  ],
   emscripten_set_immediate: function(cb, userData) {
     polyfillSetImmediate();
-    return setImmediate(function() {
-      {{{ makeDynCall('vi', 'cb') }}}(userData);
+    {{{ runtimeKeepalivePush(); }}}
+    return emSetImmediate(function() {
+      {{{ runtimeKeepalivePop(); }}}
+      callUserCallback(function() {
+        {{{ makeDynCall('vi', 'cb') }}}(userData);
+      });
     });
   },
 
+  emscripten_clear_immediate__deps: ['$polyfillSetImmediate',
+#if !MINIMAL_RUNTIME
+    '$runtimeKeepalivePop',
+#endif
+  ],
   emscripten_clear_immediate: function(id) {
-    clearImmediate(id);
+    {{{ runtimeKeepalivePop(); }}}
+    emClearImmediate(id);
   },
 
-  emscripten_set_immediate_loop__deps: ['$polyfillSetImmediate'],
+  emscripten_set_immediate_loop__deps: ['$polyfillSetImmediate', '$callUserCallback',
+#if !MINIMAL_RUNTIME
+    '$runtimeKeepalivePush', '$runtimeKeepalivePop',
+#endif
+  ],
   emscripten_set_immediate_loop: function(cb, userData) {
     polyfillSetImmediate();
     function tick() {
-      if ({{{ makeDynCall('ii', 'cb') }}}(userData)) {
-        setImmediate(tick);
-      }
+      {{{ runtimeKeepalivePop(); }}}
+      callUserCallback(function() {
+        if ({{{ makeDynCall('ii', 'cb') }}}(userData)) {
+          {{{ runtimeKeepalivePush(); }}}
+          emSetImmediate(tick);
+        }
+      });
     }
-    return setImmediate(tick);
+    {{{ runtimeKeepalivePush(); }}}
+    return emSetImmediate(tick);
   },
 
+  emscripten_set_timeout__deps: ['$callUserCallback',
+#if !MINIMAL_RUNTIME
+    '$runtimeKeepalivePush', '$runtimeKeepalivePop',
+#endif
+  ],
   emscripten_set_timeout: function(cb, msecs, userData) {
+    {{{ runtimeKeepalivePush() }}}
     return setTimeout(function() {
-      {{{ makeDynCall('vi', 'cb') }}}(userData);
+      {{{ runtimeKeepalivePop() }}}
+      callUserCallback(function() {
+        {{{ makeDynCall('vi', 'cb') }}}(userData);
+      });
     }, msecs);
   },
 
@@ -2744,13 +2785,25 @@ var LibraryJSEvents = {
     return setTimeout(tick, 0);
   },
 
+  emscripten_set_interval__deps: ['$callUserCallback',
+#if !MINIMAL_RUNTIME
+    '$runtimeKeepalivePush', '$runtimeKeepalivePop',
+#endif
+  ],
   emscripten_set_interval: function(cb, msecs, userData) {
+    {{{ runtimeKeepalivePush() }}}
     return setInterval(function() {
-      {{{ makeDynCall('vi', 'cb') }}}(userData)
+      callUserCallback(function() {
+        {{{ makeDynCall('vi', 'cb') }}}(userData)
+      });
     }, msecs);
   },
 
+#if !MINIMAL_RUNTIME
+  emscripten_clear_interval__deps: ['$runtimeKeepalivePop'],
+#endif
   emscripten_clear_interval: function(id) {
+    {{{ runtimeKeepalivePop() }}}
     clearInterval(id);
   },
 
@@ -2766,7 +2819,7 @@ var LibraryJSEvents = {
 #if ASSERTIONS
     assert(typeof str === 'number');
 #endif
-    console.log(UTF8ToString(str));
+    out(UTF8ToString(str));
   },
 
   emscripten_console_warn: function(str) {
@@ -2780,7 +2833,7 @@ var LibraryJSEvents = {
 #if ASSERTIONS
     assert(typeof str === 'number');
 #endif
-    console.error(UTF8ToString(str));
+    err(UTF8ToString(str));
   },
 
   emscripten_throw_number: function(number) {

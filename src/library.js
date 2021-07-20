@@ -38,6 +38,18 @@ LibraryManager.library = {
     setTempRet0(val);
   },
 
+  $zeroMemory: function(address, size) {
+#if LEGACY_VM_SUPPORT
+    if (!HEAPU8.fill) {
+      for (var i = 0; i < size; i++) {
+        HEAPU8[address + i] = 0;
+      }
+      return;
+    }
+#endif
+    HEAPU8.fill(0, address, address + size);
+  },
+
 #if SAFE_HEAP
   // Trivial wrappers around runtime functions that make these symbols available
   // to native code.
@@ -113,6 +125,7 @@ LibraryManager.library = {
   // sys/file.h
   // ==========================================================================
 
+  flock__unimplemented: true,
   flock: function(fd, operation) {
     // int flock(int fd, int operation);
     // Pretend to succeed
@@ -122,6 +135,7 @@ LibraryManager.library = {
   chroot__deps: ['$setErrNo'],
   chroot__proxy: 'sync',
   chroot__sig: 'ii',
+  chroot__unimplemented: true,
   chroot: function(path) {
     // int chroot(const char *path);
     // http://pubs.opengroup.org/onlinepubs/7908799/xsh/chroot.html
@@ -131,6 +145,7 @@ LibraryManager.library = {
 
   execve__deps: ['$setErrNo'],
   execve__sig: 'iiii',
+  execve__unimplemented: true,
   execve: function(path, argv, envp) {
     // int execve(const char *pathname, char *const argv[],
     //            char *const envp[]);
@@ -141,25 +156,16 @@ LibraryManager.library = {
   },
 
   exit__sig: 'vi',
-  exit: function(status) {
 #if MINIMAL_RUNTIME
-    throw 'exit(' + status + ')';
+  // minimal runtime doesn't do any exit cleanup handling so just
+  // map exit directly to the lower-level proc_exit syscall.
+  exit: 'proc_exit',
+  $exit: 'exit',
 #else
+  exit: function(status) {
     // void _exit(int status);
     // http://pubs.opengroup.org/onlinepubs/000095399/functions/exit.html
     exit(status);
-#endif
-  },
-
-  _exit__sig: 'vi',
-  _exit: 'exit',
-
-  _Exit__sig: 'vi',
-  _Exit: 'exit',
-
-#if MINIMAL_RUNTIME
-  $exit: function(status) {
-    throw 'exit(' + status + ')';
   },
 #endif
 
@@ -167,37 +173,36 @@ LibraryManager.library = {
   // processes.
   fork__deps: ['$setErrNo'],
   fork__sig: 'i',
+  fork__unimplemented: true,
   fork: function() {
     // pid_t fork(void);
     // http://pubs.opengroup.org/onlinepubs/000095399/functions/fork.html
     // We don't support multiple processes.
-    setErrNo({{{ cDefine('EAGAIN') }}});
+    setErrNo({{{ cDefine('ENOSYS') }}});
     return -1;
   },
   vfork: 'fork',
   posix_spawn: 'fork',
 
   setgroups__deps: ['$setErrNo', 'sysconf'],
+  setgroups__unimplemented: true,
   setgroups: function(ngroups, gidset) {
     // int setgroups(int ngroups, const gid_t *gidset);
     // https://developer.apple.com/library/mac/#documentation/Darwin/Reference/ManPages/man2/setgroups.2.html
     if (ngroups < 1 || ngroups > _sysconf({{{ cDefine('_SC_NGROUPS_MAX') }}})) {
       setErrNo({{{ cDefine('EINVAL') }}});
       return -1;
-    } else {
-      // We have just one process/user/group, so it makes no sense to set groups.
-      setErrNo({{{ cDefine('EPERM') }}});
-      return -1;
     }
+    // We have just one process/user/group, so it makes no sense to set groups.
+    setErrNo({{{ cDefine('EPERM') }}});
+    return -1;
   },
 
   emscripten_get_heap_max: function() {
 #if ALLOW_MEMORY_GROWTH
-#if MAXIMUM_MEMORY == -1 // no maximum set, assume the best
-    return 4*1024*1024*1024;
-#else
-    return {{{ MAXIMUM_MEMORY }}};
-#endif
+    // Handle the case of 4GB (which would wrap to 0 in the return value) by
+    // returning up to 4GB - one wasm page.
+    return {{{ Math.min(MAXIMUM_MEMORY, FOUR_GB - WASM_PAGE_SIZE) }}};
 #else // no growth
     return HEAPU8.length;
 #endif
@@ -241,7 +246,7 @@ LibraryManager.library = {
       return 1 /*success*/;
     } catch(e) {
 #if ASSERTIONS
-      console.error('emscripten_realloc_buffer: Attempted to grow heap from ' + buffer.byteLength  + ' bytes to ' + size + ' bytes, but got error: ' + e);
+      err('emscripten_realloc_buffer: Attempted to grow heap from ' + buffer.byteLength  + ' bytes to ' + size + ' bytes, but got error: ' + e);
 #endif
     }
     // implicit 0 return to save code size (caller will cast "undefined" into 0
@@ -295,16 +300,12 @@ LibraryManager.library = {
     // 4. If we were unable to allocate as much memory, it may be due to over-eager decision to excessively reserve due to (3) above.
     //    Hence if an allocation fails, cut down on the amount of excess growth, in an attempt to succeed to perform a smaller allocation.
 
-#if MAXIMUM_MEMORY != -1
-    // A limit was set for how much we can grow. We should not exceed that
+    // A limit is set for how much we can grow. We should not exceed that
     // (the wasm binary specifies it, so if we tried, we'd fail anyhow).
     // In CAN_ADDRESS_2GB mode, stay one Wasm page short of 4GB: while e.g. Chrome is able to allocate full 4GB Wasm memories, the size will wrap
     // back to 0 bytes in Wasm side for any code that deals with heap sizes, which would require special casing all heap size related code to treat
     // 0 specially.
-    var maxHeapSize = {{{ Math.min(MAXIMUM_MEMORY, 4294967296 - WASM_PAGE_SIZE) }}};
-#else
-    var maxHeapSize = {{{ (CAN_ADDRESS_2GB ? 4294967296 : 2147483648) - WASM_PAGE_SIZE }}};
-#endif
+    var maxHeapSize = {{{ Math.min(MAXIMUM_MEMORY, FOUR_GB - WASM_PAGE_SIZE) }}};
     if (requestedSize > maxHeapSize) {
 #if ASSERTIONS
       err('Cannot enlarge memory, asked to go up to ' + requestedSize + ' bytes, but the limit is ' + maxHeapSize + ' bytes!');
@@ -338,7 +339,7 @@ LibraryManager.library = {
       var replacement = emscripten_realloc_buffer(newSize);
 #if ASSERTIONS == 2
       var t1 = _emscripten_get_now();
-      console.log('Heap resize call from ' + oldSize + ' to ' + newSize + ' took ' + (t1 - t0) + ' msecs. Success: ' + !!replacement);
+      out('Heap resize call from ' + oldSize + ' to ' + newSize + ' took ' + (t1 - t0) + ' msecs. Success: ' + !!replacement);
 #endif
       if (replacement) {
 #if ASSERTIONS && WASM2JS
@@ -417,18 +418,13 @@ LibraryManager.library = {
     // http://pubs.opengroup.org/onlinepubs/000095399/functions/system.html
     // Can't call external programs.
     if (!command) return 0; // no shell available
-    setErrNo({{{ cDefine('EAGAIN') }}});
+    setErrNo({{{ cDefine('ENOSYS') }}});
     return -1;
   },
 
   // ==========================================================================
   // stdlib.h
   // ==========================================================================
-
-  _ZSt9terminatev__deps: ['exit'],
-  _ZSt9terminatev: function() {
-    _exit(-1234);
-  },
 
 #if MINIMAL_RUNTIME && !EXIT_RUNTIME
   atexit__sig: 'v', // atexit unsupported in MINIMAL_RUNTIME
@@ -446,18 +442,12 @@ LibraryManager.library = {
 
 #endif
 
-  // used in rust, clang when doing thread_local statics
-#if USE_PTHREADS
-  __cxa_thread_atexit: 'pthread_cleanup_push',
-  __cxa_thread_atexit_impl: 'pthread_cleanup_push',
-#else
-  __cxa_thread_atexit: 'atexit',
-  __cxa_thread_atexit_impl: 'atexit',
-#endif
-
   // TODO: There are currently two abort() functions that get imported to asm module scope: the built-in runtime function abort(),
   // and this function _abort(). Remove one of these, importing two functions for the same purpose is wasteful.
   abort__sig: 'v',
+  // Proxy synchronously, which will have the effect of halting the program
+  // and killing all threads, including this one.
+  abort__proxy: 'sync',
   abort: function() {
 #if MINIMAL_RUNTIME
     // In MINIMAL_RUNTIME the module object does not exist, so its behavior to abort is to throw directly.
@@ -483,9 +473,13 @@ LibraryManager.library = {
     return limit;
   },
 
-#if SHRINK_LEVEL < 2 // In -Oz builds, we replace memcpy() altogether with a non-unrolled wasm variant, so we should never emit emscripten_memcpy_big() in the build.
+  // In -Oz builds, we replace memcpy() altogether with a non-unrolled wasm
+  // variant, so we should never emit emscripten_memcpy_big() in the build.
+  // In STANDALONE_WASM we aviud the emscripten_memcpy_big dependency so keep
+  // the wasm file standalone.
+#if SHRINK_LEVEL < 2 && !STANDALONE_WASM
 
-#if MIN_CHROME_VERSION < 45 || MIN_EDGE_VERSION < 14 || MIN_FIREFOX_VERSION < 34 || MIN_IE_VERSION != TARGET_NOT_SUPPORTED || MIN_SAFARI_VERSION < 100101 || STANDALONE_WASM
+#if MIN_CHROME_VERSION < 45 || MIN_EDGE_VERSION < 14 || MIN_FIREFOX_VERSION < 34 || MIN_IE_VERSION != TARGET_NOT_SUPPORTED || MIN_SAFARI_VERSION < 100101
   // https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/TypedArray/copyWithin lists browsers that support TypedArray.prototype.copyWithin, but it
   // has outdated information for Safari, saying it would not support it.
   // https://github.com/WebKit/webkit/commit/24a800eea4d82d6d595cdfec69d0f68e733b5c52#diff-c484911d8df319ba75fce0d8e7296333R1 suggests support was added on Aug 28, 2015.
@@ -518,17 +512,6 @@ LibraryManager.library = {
   __assert_fail: function(condition, filename, line, func) {
     abort('Assertion failed: ' + UTF8ToString(condition) + ', at: ' + [filename ? UTF8ToString(filename) : 'unknown filename', line, func ? UTF8ToString(func) : 'unknown function']);
   },
-
-  // ==========================================================================
-  // pwd.h
-  // ==========================================================================
-
-  // TODO: Implement.
-  // http://pubs.opengroup.org/onlinepubs/009695399/basedefs/pwd.h.html
-  getpwuid: function(uid) {
-    return 0; // NULL
-  },
-
 
   // ==========================================================================
   // time.h
@@ -773,6 +756,7 @@ LibraryManager.library = {
   },
 
   stime__deps: ['$setErrNo'],
+  stime__unimplemented: true,
   stime: function(when) {
     setErrNo({{{ cDefine('EPERM') }}});
     return -1;
@@ -1407,6 +1391,7 @@ LibraryManager.library = {
     return _strptime(buf, format, tm); // no locale support yet
   },
 
+  getdate__unimplemented: true,
   getdate: function(string) {
     // struct tm *getdate(const char *string);
     // http://pubs.opengroup.org/onlinepubs/009695399/functions/getdate.html
@@ -1496,61 +1481,51 @@ LibraryManager.library = {
   // sys/times.h
   // ==========================================================================
 
+  times__deps: ['$zeroMemory'],
+  times__unimplemented: true,
   times: function(buffer) {
     // clock_t times(struct tms *buffer);
     // http://pubs.opengroup.org/onlinepubs/009695399/functions/times.html
     // NOTE: This is fake, since we can't calculate real CPU time usage in JS.
     if (buffer !== 0) {
-      _memset(buffer, 0, {{{ C_STRUCTS.tms.__size__ }}});
+      zeroMemory(buffer, {{{ C_STRUCTS.tms.__size__ }}});
     }
     return 0;
   },
 
   // ==========================================================================
-  // sys/types.h
-  // ==========================================================================
-  // http://www.kernel.org/doc/man-pages/online/pages/man3/minor.3.html
-  makedev__sig: 'iii',
-  makedev: function(maj, min) {
-    return ((maj) << 8 | (min));
-  },
-  gnu_dev_makedev: 'makedev',
-  major__sig: 'ii',
-  major: function(dev) {
-    return ((dev) >> 8);
-  },
-  gnu_dev_major: 'major',
-  minor__sig: 'ii',
-  minor: function(dev) {
-    return ((dev) & 0xff);
-  },
-  gnu_dev_minor: 'minor',
-
-  // ==========================================================================
   // setjmp.h
   // ==========================================================================
 
-  longjmp__sig: 'vii',
-#if SUPPORT_LONGJMP
-  longjmp: function(env, value) {
-    _setThrew(env, value || 1);
-    throw 'longjmp';
-  },
-#else
+  _emscripten_throw_longjmp__sig: 'v',
+  _emscripten_throw_longjmp: function() { throw 'longjmp'; },
+#if !SUPPORT_LONGJMP
+  // These are in order to print helpful error messages when either longjmp of
+  // setjmp is used.
   longjmp__deps: [function() {
     error('longjmp support was disabled (SUPPORT_LONGJMP=0), but it is required by the code (either set SUPPORT_LONGJMP=1, or remove uses of it in the project)');
   }],
+  get setjmp__deps() {
+    return this.longjmp__deps;
+  },
+  // This is to print the correct error message when a program is built with
+  // SUPPORT_LONGJMP=1 but linked with SUPPORT_LONGJMP=0. When a program is
+  // built with SUPPORT_LONGJMP=1, the object file contains references of not
+  // longjmp but _emscripten_throw_longjmp, which is called from
+  // emscripten_longjmp.
+  get _emscripten_throw_longjmp__deps() {
+    return this.longjmp__deps;
+  },
   // will never be emitted, as the dep errors at compile time
+  longjmp__unimplemented: true,
   longjmp: function(env, value) {
     abort('longjmp not supported');
   },
+  setjmp__unimplemented: true,
+  setjmp: function(env, value) {
+    abort('setjmp not supported');
+  },
 #endif
-  // TODO: remove these aliases if/when the LLVM backend can stop emitting them
-  // (it emits them atm as they are generated by an IR pass, at at that time
-  // they each have a different signature - it is only at the wasm level that
-  // they become identical).
-  emscripten_longjmp__sig: 'vii',
-  emscripten_longjmp: 'longjmp',
 
   // ==========================================================================
   // sys/wait.h
@@ -1558,6 +1533,7 @@ LibraryManager.library = {
 
   wait__deps: ['$setErrNo'],
   wait__sig: 'ii',
+  wait__unimplemented: true,
   wait: function(stat_loc) {
     // pid_t wait(int *stat_loc);
     // http://pubs.opengroup.org/onlinepubs/009695399/functions/wait.html
@@ -2040,23 +2016,22 @@ LibraryManager.library = {
 
     return { family: family, addr: addr, port: port };
   },
-  $writeSockaddr__deps: ['$Sockets', '$inetPton4', '$inetPton6'],
+  $writeSockaddr__deps: ['$Sockets', '$inetPton4', '$inetPton6', '$zeroMemory'],
   $writeSockaddr: function (sa, family, addr, port, addrlen) {
     switch (family) {
       case {{{ cDefine('AF_INET') }}}:
         addr = inetPton4(addr);
+        zeroMemory(sa, {{{ C_STRUCTS.sockaddr_in.__size__ }}});
         if (addrlen) {
           {{{ makeSetValue('addrlen', 0, C_STRUCTS.sockaddr_in.__size__, 'i32') }}};
         }
         {{{ makeSetValue('sa', C_STRUCTS.sockaddr_in.sin_family, 'family', 'i16') }}};
         {{{ makeSetValue('sa', C_STRUCTS.sockaddr_in.sin_addr.s_addr, 'addr', 'i32') }}};
         {{{ makeSetValue('sa', C_STRUCTS.sockaddr_in.sin_port, '_htons(port)', 'i16') }}};
-        /* Use makeSetValue instead of memset to avoid adding memset dependency for all users of writeSockaddr. */
-        {{{ assert(C_STRUCTS.sockaddr_in.__size__ - C_STRUCTS.sockaddr_in.sin_zero == 8), '' }}}
-        {{{ makeSetValue('sa', C_STRUCTS.sockaddr_in.sin_zero, '0', 'i64') }}};
         break;
       case {{{ cDefine('AF_INET6') }}}:
         addr = inetPton6(addr);
+        zeroMemory(sa, {{{ C_STRUCTS.sockaddr_in6.__size__ }}});
         if (addrlen) {
           {{{ makeSetValue('addrlen', 0, C_STRUCTS.sockaddr_in6.__size__, 'i32') }}};
         }
@@ -2066,8 +2041,6 @@ LibraryManager.library = {
         {{{ makeSetValue('sa', C_STRUCTS.sockaddr_in6.sin6_addr.__in6_union.__s6_addr+8, 'addr[2]', 'i32') }}};
         {{{ makeSetValue('sa', C_STRUCTS.sockaddr_in6.sin6_addr.__in6_union.__s6_addr+12, 'addr[3]', 'i32') }}};
         {{{ makeSetValue('sa', C_STRUCTS.sockaddr_in6.sin6_port, '_htons(port)', 'i16') }}};
-        {{{ makeSetValue('sa', C_STRUCTS.sockaddr_in6.sin6_flowinfo, '0', 'i32') }}};
-        {{{ makeSetValue('sa', C_STRUCTS.sockaddr_in6.sin6_scope_id, '0', 'i32') }}};
         break;
       default:
         return {{{ cDefine('EAFNOSUPPORT') }}};
@@ -2566,22 +2539,36 @@ LibraryManager.library = {
 
   // pwd.h
 
+  getpwnam__unimplemented: true,
   getpwnam: function() { throw 'getpwnam: TODO' },
+  getpwnam_r__unimplemented: true,
   getpwnam_r: function() { throw 'getpwnam_r: TODO' },
+  getpwuid__unimplemented: true,
   getpwuid: function() { throw 'getpwuid: TODO' },
+  getpwuid_r__unimplemented: true,
   getpwuid_r: function() { throw 'getpwuid_r: TODO' },
+  setpwent__unimplemented: true,
   setpwent: function() { throw 'setpwent: TODO' },
+  getpwent__unimplemented: true,
   getpwent: function() { throw 'getpwent: TODO' },
+  endpwent__unimplemented: true,
   endpwent: function() { throw 'endpwent: TODO' },
 
   // grp.h
 
+  getgrgid__unimplemented: true,
   getgrgid: function() { throw 'getgrgid: TODO' },
+  getgrgid_r__unimplemented: true,
   getgrgid_r: function() { throw 'getgrgid_r: TODO' },
+  getgrnam__unimplemented: true,
   getgrnam: function() { throw 'getgrnam: TODO' },
+  getgrnam_r__unimplemented: true,
   getgrnam_r: function() { throw 'getgrnam_r: TODO' },
+  getgrent__unimplemented: true,
   getgrent: function() { throw 'getgrent: TODO' },
+  endgrent__unimplemented: true,
   endgrent: function() { throw 'endgrent: TODO' },
+  setgrent__unimplemented: true,
   setgrent: function() { throw 'setgrent: TODO' },
 
   // random.h
@@ -2901,7 +2888,7 @@ LibraryManager.library = {
 
     if (flags & 1 /*EM_LOG_CONSOLE*/) {
       if (flags & 4 /*EM_LOG_ERROR*/) {
-        console.error(str);
+        err(str);
       } else if (flags & 2 /*EM_LOG_WARN*/) {
         console.warn(str);
       } else if (flags & 512 /*EM_LOG_INFO*/) {
@@ -2909,7 +2896,7 @@ LibraryManager.library = {
       } else if (flags & 256 /*EM_LOG_DEBUG*/) {
         console.debug(str);
       } else {
-        console.log(str);
+        out(str);
       }
     } else if (flags & 6 /*EM_LOG_ERROR|EM_LOG_WARN*/) {
       err(str);
@@ -3357,6 +3344,7 @@ LibraryManager.library = {
     return Number(str);
   },
 
+#if LINK_AS_CXX
   // libunwind
 
   _Unwind_Backtrace__deps: ['emscripten_get_callstack_js'],
@@ -3386,6 +3374,7 @@ LibraryManager.library = {
   _Unwind_DeleteException: function(ex) {
     err('TODO: Unwind_DeleteException');
   },
+#endif
 
   // autodebugging
 
@@ -3557,7 +3546,9 @@ LibraryManager.library = {
     throw 'unwind';
   },
 
-  emscripten_force_exit__deps: ['$runtimeKeepaliveCounter'],
+#if MINIMAL_RUNTIME
+  emscripten_force_exit__deps: ['exit'],
+#endif
   emscripten_force_exit__proxy: 'sync',
   emscripten_force_exit__sig: 'vi',
   emscripten_force_exit: function(status) {
@@ -3566,24 +3557,18 @@ LibraryManager.library = {
     warnOnce('emscripten_force_exit cannot actually shut down the runtime, as the build does not have EXIT_RUNTIME set');
 #endif
 #endif
-#if !MINIMAL_RUNTIME
+#if MINIMAL_RUNTIME
+    _exit(status);
+#else
     noExitRuntime = false;
     runtimeKeepaliveCounter = 0;
-#endif
     exit(status);
+#endif
   },
 
 #if !MINIMAL_RUNTIME
-  $runtimeKeepaliveCounter: 0,
-
-  $keepRuntimeAlive__deps: ['$runtimeKeepaliveCounter'],
-  $keepRuntimeAlive: function() {
-    return noExitRuntime || runtimeKeepaliveCounter > 0;
-  },
-
   // Callable in pthread without __proxy needed.
   $runtimeKeepalivePush__sig: 'v',
-  $runtimeKeepalivePush__deps: ['$runtimeKeepaliveCounter'],
   $runtimeKeepalivePush: function() {
     runtimeKeepaliveCounter += 1;
 #if RUNTIME_DEBUG
@@ -3592,7 +3577,6 @@ LibraryManager.library = {
   },
 
   $runtimeKeepalivePop__sig: 'v',
-  $runtimeKeepalivePop__deps: ['$runtimeKeepaliveCounter'],
   $runtimeKeepalivePop: function() {
 #if ASSERTIONS
     assert(runtimeKeepaliveCounter > 0);
@@ -3602,7 +3586,6 @@ LibraryManager.library = {
     err('runtimeKeepalivePop -> counter=' + runtimeKeepaliveCounter);
 #endif
   },
-
 
   // Used to call user callbacks from the embedder / event loop.  For example
   // setTimeout or any other kind of event handler that calls into user case
@@ -3679,26 +3662,79 @@ LibraryManager.library = {
   },
 #endif
 
+  $safeSetTimeout: function(func, timeout) {
+    {{{ runtimeKeepalivePush() }}}
+    return setTimeout(function() {
+      {{{ runtimeKeepalivePop() }}}
+      callUserCallback(func);
+    }, timeout);
+  },
+
   $asmjsMangle: function(x) {
     var unmangledSymbols = {{{ buildStringArray(WASM_SYSTEM_EXPORTS) }}};
     return x.indexOf('dynCall_') == 0 || unmangledSymbols.includes(x) ? x : '_' + x;
   },
 
+  $asyncLoad: function(url, onload, onerror, noRunDep) {
+    var dep = !noRunDep ? getUniqueRunDependency('al ' + url) : '';
+    readAsync(url, function(arrayBuffer) {
+      assert(arrayBuffer, 'Loading data file "' + url + '" failed (no arrayBuffer).');
+      onload(new Uint8Array(arrayBuffer));
+      if (dep) removeRunDependency(dep);
+    }, function(event) {
+      if (onerror) {
+        onerror();
+      } else {
+        throw 'Loading data file "' + url + '" failed.';
+      }
+    });
+    if (dep) addRunDependency(dep);
+  },
+
+  $alignMemory: function(size, alignment) {
+#if ASSERTIONS
+    assert(alignment, "alignment argument is required");
+#endif
+    return Math.ceil(size / alignment) * alignment;
+  },
+
+  // Allocate memory for an mmap operation. This allocates space of the right
+  // page-aligned size, and clears the allocated space.
+  $mmapAlloc__deps: ['$zeroMemory', '$alignMemory'],
+  $mmapAlloc: function(size) {
+#if hasExportedFunction('_memalign')
+    size = alignMemory(size, {{{ WASM_PAGE_SIZE }}});
+    var ptr = _memalign({{{ WASM_PAGE_SIZE }}}, size);
+    if (!ptr) return 0;
+    zeroMemory(ptr, size);
+    return ptr;
+#elif ASSERTIONS
+    abort('internal error: mmapAlloc called but `memalign` native symbol not exported');
+#else
+    abort();
+#endif
+  },
+
 #if RELOCATABLE
-  // These get set in emscripten.py during add_standard_wasm_imports, but are
-  // included here so they don't show up as undefined symbols at js compile
-  // time.
+  // Globals that are normally exported from the wasm module but in relocatable
+  // mode are created here and imported by the module.
+  // Mark with `__import` so these are usable from native code.  This is needed
+  // because, by default, only functions can be be imported.
   __stack_pointer: "new WebAssembly.Global({'value': 'i32', 'mutable': true}, {{{ STACK_BASE }}})",
+  __stack_pointer__import: true,
   // tell the memory segments where to place themselves
   __memory_base: '{{{ GLOBAL_BASE }}}',
+  __memory_base__import: true,
   // the wasm backend reserves slot 0 for the NULL function pointer
   __table_base: 1,
+  __table_base__import: true,
   // To support such allocations during startup, track them on __heap_base and
   // then when the main module is loaded it reads that value and uses it to
   // initialize sbrk (the main module is relocatable itself, and so it does not
   // have __heap_base hardcoded into it - it receives it from JS as an extern
   // global, basically).
   __heap_base: '{{{ HEAP_BASE }}}',
+  __heap_base__import: true,
 #endif
 };
 

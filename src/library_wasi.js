@@ -5,10 +5,14 @@
  */
 
 var WasiLibrary = {
-  proc_exit__deps: ['exit'],
+  proc_exit__nothrow: true,
   proc_exit__sig: 'vi',
   proc_exit: function(code) {
-    _exit(code);
+#if MINIMAL_RUNTIME
+    throw 'exit(' + code + ')';
+#else
+    procExit(code);
+#endif
   },
 
   $getEnvStrings__deps: ['$ENV', '$getExecutableName'],
@@ -33,7 +37,11 @@ var WasiLibrary = {
       };
       // Apply the user-provided values, if any.
       for (var x in ENV) {
-        env[x] = ENV[x];
+        // x is a key in ENV; if ENV[x] is undefined, that means it was
+        // explicitly set to be so. We allow user code to do that to
+        // force variables with default values to remain unset.
+        if (ENV[x] === undefined) delete env[x];
+        else env[x] = ENV[x];
       }
       var strings = [];
       for (var x in env) {
@@ -45,6 +53,7 @@ var WasiLibrary = {
   },
 
   environ_sizes_get__deps: ['$getEnvStrings'],
+  environ_sizes_get__nothrow: true,
   environ_sizes_get__sig: 'iii',
   environ_sizes_get: function(penviron_count, penviron_buf_size) {
     var strings = getEnvStrings();
@@ -62,6 +71,7 @@ var WasiLibrary = {
     , '$writeAsciiToMemory'
 #endif
   ],
+  environ_get__nothrow: true,
   environ_get__sig: 'iii',
   environ_get: function(__environ, environ_buf) {
     var bufSize = 0;
@@ -77,6 +87,7 @@ var WasiLibrary = {
   // In normal (non-standalone) mode arguments are passed direclty
   // to main, and the `mainArgs` global does not exist.
 #if STANDALONE_WASM
+  args_sizes_get__nothrow: true,
   args_sizes_get__sig: 'iii',
   args_sizes_get: function(pargc, pargv_buf_size) {
 #if MAIN_READS_PARAMS
@@ -92,6 +103,7 @@ var WasiLibrary = {
     return 0;
   },
 
+  args_get__nothrow: true,
   args_get__sig: 'iii',
 #if MINIMAL_RUNTIME && MAIN_READS_PARAMS
   args_get__deps: ['$writeAsciiToMemory'],
@@ -121,6 +133,7 @@ var WasiLibrary = {
   // but the wasm file can't be legalized in standalone mode, which is where
   // this is needed. To get this code to be usable as a JS shim we need to
   // either wait for BigInt support or to legalize on the client.
+  clock_time_get__nothrow: true,
   clock_time_get__sig: 'iiiii',
   clock_time_get__deps: ['emscripten_get_now', 'emscripten_get_now_is_monotonic', '$checkWasiClock'],
   clock_time_get: function(clk_id, {{{ defineI64Param('precision') }}}, ptime) {
@@ -144,6 +157,7 @@ var WasiLibrary = {
     return 0;
   },
 
+  clock_res_get__nothrow: true,
   clock_res_get__sig: 'iii',
   clock_res_get__deps: ['emscripten_get_now', 'emscripten_get_now_res', 'emscripten_get_now_is_monotonic', '$checkWasiClock'],
   clock_res_get: function(clk_id, pres) {
@@ -166,8 +180,14 @@ var WasiLibrary = {
 
 #if SYSCALLS_REQUIRE_FILESYSTEM == 0 && (!MINIMAL_RUNTIME || EXIT_RUNTIME)
   $flush_NO_FILESYSTEM: function() {
-    // flush anything remaining in the buffers during shutdown
+    // flush anything remaining in the buffers during shutdown.
+    // Only call the streamlined fflush variant when ASSERTIONS are disabled
+    // to ensure that the warning for unflushed content is still displayed.
+#if ASSERTIONS
     if (typeof _fflush !== 'undefined') _fflush(0);
+#else
+    if (typeof ___stdio_exit !== 'undefined') ___stdio_exit();
+#endif
     var buffers = SYSCALLS.buffers;
     if (buffers[1].length) SYSCALLS.printChar(1, {{{ charCode("\n") }}});
     if (buffers[2].length) SYSCALLS.printChar(2, {{{ charCode("\n") }}});

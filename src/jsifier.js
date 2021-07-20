@@ -97,18 +97,22 @@ function JSify(functionsOnly) {
     // It is possible that when printing the function as a string on Windows, the js interpreter we are in returns the string with Windows
     // line endings \r\n. This is undesirable, since line endings are managed in the form \n in the output for binary file writes, so
     // make sure the endings are uniform.
-    snippet = snippet.toString().replace(/\r\n/gm,"\n");
+    snippet = snippet.toString().replace(/\r\n/gm,'\n');
 
     // name the function; overwrite if it's already named
     snippet = snippet.replace(/function(?:\s+([^(]+))?\s*\(/, 'function ' + finalName + '(');
 
     // apply LIBRARY_DEBUG if relevant
-    if (LIBRARY_DEBUG) {
+    if (LIBRARY_DEBUG && !isJsOnlyIdentifier(ident)) {
       snippet = modifyFunction(snippet, (name, args, body) => {
-        return 'function ' + name + '(' + args + ') {\n' +
-               'var ret = (function() { if (runtimeDebug) err("[library call:' + finalName + ': " + Array.prototype.slice.call(arguments).map(prettyPrint) + "]");\n' +
-                body +
-                '}).apply(this, arguments); if (runtimeDebug && typeof ret !== "undefined") err("  [     return:" + prettyPrint(ret)); return ret; \n}\n';
+        return `\
+function ${name}(${args}) {
+  var ret = (function() { if (runtimeDebug) err("[library call:${finalName}: " + Array.prototype.slice.call(arguments).map(prettyPrint) + "]");
+  ${body}
+  }).apply(this, arguments);
+  if (runtimeDebug && typeof ret !== "undefined") err("  [     return:" + prettyPrint(ret));
+  return ret;
+}`
       });
     }
     return snippet;
@@ -130,6 +134,8 @@ function JSify(functionsOnly) {
       // what we just added to the library.
     }
 
+    const TOP_LEVEL = 'top-level compiled C/C++ code';
+
     function addFromLibrary(item, dependent) {
       // dependencies can be JS functions, which we just run
       if (typeof item == 'function') return item();
@@ -145,26 +151,23 @@ function JSify(functionsOnly) {
         return '';
       }
 
-      // if the function was implemented in compiled code, we just need to export it so we can reach it from JS
+      // if the function was implemented in compiled code, there is no need to include the js version
       if (ident in WASM_EXPORTS) {
-        EXPORTED_FUNCTIONS[finalName] = 1;
-        // stop here: we don't need to add anything from our js libraries, not even deps, compiled code is on it
         return '';
       }
-
-      // Don't replace implemented functions with library ones (which can happen when we add dependencies).
-      // Note: We don't return the dependencies here. Be careful not to end up where this matters
-      if (finalName in Functions.implementedFunctions) return '';
 
       var noExport = false;
 
       if (!LibraryManager.library.hasOwnProperty(ident)) {
+        if (ONLY_CALC_JS_SYMBOLS) {
+          return;
+        }
         if (!isDefined(ident)) {
           var msg = 'undefined symbol: ' + ident;
-          if (dependent) msg += ' (referenced by ' + dependent + ')';
+          if (dependent) msg += ` (referenced by ${dependent})`;
           if (ERROR_ON_UNDEFINED_SYMBOLS) {
             error(msg);
-            if (!LLD_REPORT_UNDEFINED) {
+            if (dependent == TOP_LEVEL && !LLD_REPORT_UNDEFINED) {
               warnOnce('Link with `-s LLD_REPORT_UNDEFINED` to get more information on undefined symbols');
             }
             warnOnce('To disable errors for undefined symbols use `-s ERROR_ON_UNDEFINED_SYMBOLS=0`')
@@ -178,23 +181,27 @@ function JSify(functionsOnly) {
         }
         if (!RELOCATABLE) {
           // emit a stub that will fail at runtime
-          LibraryManager.library[ident] = new Function("err('missing function: " + ident + "'); abort(-1);");
+          LibraryManager.library[ident] = new Function(`err('missing function: ${ident}'); abort(-1);`);
           // We have already warned/errored about this function, so for the purposes of Closure use, mute all type checks
           // regarding this function, marking ot a variadic function that can take in anything and return anything.
           // (not useful to warn/error multiple times)
           LibraryManager.library[ident + '__docs'] = '/** @type {function(...*):?} */';
         } else {
-          var target = "Module['" + finalName + "']";
+          var target = `Module['${finalName}']`;
           var assertion = '';
           if (ASSERTIONS) {
             var what = 'function';
-            assertion += 'if (!' + target + ') abort("external symbol \'' + ident + '\' is missing. perhaps a side module was not linked in? if this function was expected to arrive from a system library, try to build the MAIN_MODULE with EMCC_FORCE_STDLIBS=1 in the environment");\n';
+            assertion += `if (!${target}) abort("external symbol '${ident}' is missing. perhaps a side module was not linked in? if this function was expected to arrive from a system library, try to build the MAIN_MODULE with EMCC_FORCE_STDLIBS=1 in the environment");\n`;
 
           }
-          var functionBody = assertion + "return " + target + ".apply(null, arguments);";
+          var functionBody = assertion + `return ${target}.apply(null, arguments);`;
           LibraryManager.library[ident] = new Function(functionBody);
           noExport = true;
         }
+      }
+
+      if (!ALLOW_UNIMPLEMENTED_SYSCALLS && LibraryManager.library[ident + '__unimplemented']) {
+        error(`attempt to link unsupport syscall: ${ident} (use -s ALLOW_UNIMPLEMENTED_SYSCALLS (the default) to allow linking with a stub version`);
       }
 
       var original = LibraryManager.library[ident];
@@ -202,11 +209,13 @@ function JSify(functionsOnly) {
       var redirectedIdent = null;
       var deps = LibraryManager.library[ident + '__deps'] || [];
       if (!Array.isArray(deps)) {
-        error('JS library directive ' + ident + '__deps=' + deps.toString() + ' is of type ' + typeof deps + ', but it should be an array!');
+        error(`JS library directive ${ident}__deps=${deps.toString()} is of type ${typeof deps}, but it should be an array!`);
         return;
       }
       deps.forEach((dep) => {
-        if (typeof snippet === 'string' && !(dep in LibraryManager.library)) warn('missing library dependency ' + dep + ', make sure you are compiling with the right options (see #if in src/library*.js)');
+        if (typeof snippet === 'string' && !(dep in LibraryManager.library)) {
+          warn(`missing library dependency ${dep}, make sure you are compiling with the right options (see #if in src/library*.js)`);
+        }
       });
       var isFunction = false;
 
@@ -223,7 +232,7 @@ function JSify(functionsOnly) {
           // In asm, we need to know about library functions. If there is a target, though, then no
           // need to consider this a library function - we will call directly to it anyhow
           if (!redirectedIdent && (typeof target == 'function')) {
-            Functions.libraryFunctions[finalName] = 1;
+            libraryFunctions.push(finalName);
           }
         }
       } else if (typeof snippet === 'object') {
@@ -231,15 +240,13 @@ function JSify(functionsOnly) {
       } else if (typeof snippet === 'function') {
         isFunction = true;
         snippet = processLibraryFunction(snippet, ident, finalName);
-        if (!isJsOnlyIdentifier(ident[0])) {
-          Functions.libraryFunctions[finalName] = 1;
-        }
+        libraryFunctions.push(finalName);
       }
 
       // If a JS library item specifies xxx_import: true, then explicitly mark that symbol to be exported
       // to wasm module.
       if (LibraryManager.library[ident + '__import']) {
-        Functions.libraryFunctions[finalName] = 1;
+        libraryFunctions.push(finalName);
       }
 
       if (ONLY_CALC_JS_SYMBOLS)
@@ -264,25 +271,15 @@ function JSify(functionsOnly) {
       if (redirectedIdent) {
         deps = deps.concat(LibraryManager.library[redirectedIdent + '__deps'] || []);
       }
-      // In asm, dependencies implemented in C might be needed by JS library functions.
-      // We don't know yet if they are implemented in C or not. To be safe, export such
-      // special cases.
-      [LIBRARY_DEPS_TO_AUTOEXPORT].forEach((special) => {
-        deps.forEach((dep) => {
-          if (dep == special && !EXPORTED_FUNCTIONS[dep]) {
-            EXPORTED_FUNCTIONS[dep] = 1;
-          }
-        });
-      });
       if (VERBOSE) {
-        printErr('adding ' + finalName + ' and deps ' + deps + ' : ' + (snippet + '').substr(0, 40));
+        printErr(`adding ${finalName} and deps ${deps} : ` + (snippet + '').substr(0, 40));
       }
       var identDependents = ident + "__deps: ['" + deps.join("','")+"']";
       function addDependency(dep) {
         if (typeof dep !== 'function') {
           dep = {identOrig: dep, identMangled: mangleCSymbolName(dep)};
         }
-        return addFromLibrary(dep, identDependents + ', referenced by ' + dependent);
+        return addFromLibrary(dep, `${identDependents}, referenced by ${dependent}`);
       }
       var depsText = (deps ? deps.map(addDependency).filter((x) => x != '').join('\n') + '\n' : '');
       var contentText;
@@ -291,13 +288,17 @@ function JSify(functionsOnly) {
         var proxyingMode = LibraryManager.library[ident + '__proxy'];
         if (USE_PTHREADS && proxyingMode) {
           if (proxyingMode !== 'sync' && proxyingMode !== 'async') {
-            throw 'Invalid proxyingMode ' + ident + '__proxy: \'' + proxyingMode + '\' specified!';
+            throw `Invalid proxyingMode ${ident}__proxy: '${proxyingMode}' specified!`;
           }
           var sync = proxyingMode === 'sync';
           assert(typeof original === 'function');
           contentText = modifyFunction(snippet, (name, args, body) => {
-            return 'function ' + name + '(' + args + ') {\n' +
-                   'if (ENVIRONMENT_IS_PTHREAD) return _emscripten_proxy_to_main_thread_js(' + proxiedFunctionTable.length + ', ' + (+sync) + (args ? ', ' : '') + args + ');\n' + body + '}\n';
+            return `
+function ${name}(${args}) {
+  if (ENVIRONMENT_IS_PTHREAD)
+    return _emscripten_proxy_to_main_thread_js(${proxiedFunctionTable.length}, ${+sync}${args ? ', ' : ''}${args});
+  ${body}
+}\n`;
           });
           proxiedFunctionTable.push(finalName);
         } else {
@@ -316,16 +317,16 @@ function JSify(functionsOnly) {
         //  emits
         //   'var foo = [value];'
         if (typeof snippet === 'string' && snippet[0] == '=') snippet = snippet.substr(1);
-        contentText = 'var ' + finalName + '=' + snippet + ';';
+        contentText = `var ${finalName} = ${snippet};`;
       }
       var sig = LibraryManager.library[ident + '__sig'];
       // asm module exports are done in emscripten.py, after the asm module is ready. Here
       // we also export library methods as necessary.
       if ((EXPORT_ALL || (finalName in EXPORTED_FUNCTIONS)) && !noExport) {
-        contentText += '\nModule["' + finalName + '"] = ' + finalName + ';';
+        contentText += `\nModule["${finalName}"] = ${finalName};`;
       }
       if (MAIN_MODULE && sig) {
-        contentText += '\n' + finalName + '.sig = \'' + sig + '\';';
+        contentText += `\n${finalName}.sig = '${sig}';`;
       }
 
       var commentText = '';
@@ -337,7 +338,7 @@ function JSify(functionsOnly) {
     }
 
     itemsDict.functionStub.push(item);
-    item.JS = addFromLibrary(item, 'top-level compiled C/C++ code');
+    item.JS = addFromLibrary(item, TOP_LEVEL);
   }
 
   // Final combiner
@@ -407,7 +408,7 @@ function JSify(functionsOnly) {
       print(preprocess(read('arrayUtils.js')));
     }
 
-    if (SUPPORT_BASE64_EMBEDDING && !MINIMAL_RUNTIME) {
+    if ((SUPPORT_BASE64_EMBEDDING || FORCE_FILESYSTEM) && !MINIMAL_RUNTIME) {
       print(preprocess(read('base64Utils.js')));
     }
 
@@ -442,7 +443,12 @@ function JSify(functionsOnly) {
     var shellParts = read(shellFile).split('{{BODY}}');
     print(processMacros(preprocess(shellParts[1], shellFile)));
 
-    PassManager.serialize();
+    print('\n//FORWARDED_DATA:' + JSON.stringify({
+      libraryFunctions: libraryFunctions,
+      ATINITS: ATINITS.join('\n'),
+      ATMAINS: ATMAINS.join('\n'),
+      ATEXITS: ATEXITS.join('\n'),
+    }));
   }
 
   // Data

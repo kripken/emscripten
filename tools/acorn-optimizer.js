@@ -696,6 +696,14 @@ function emitDCEGraph(ast) {
               emptyOut(node); // ignore this in the second pass; this does not root
               return;
             }
+            if (value.right.type === 'Literal') {
+              // this is
+              //  var x = Module['x'] = 1234;
+              // this form occurs when global addresses are exported from the
+              // module.  It doesn't constitute a usage.
+              assert(typeof value.right.value === 'number');
+              emptyOut(node);
+            }
           }
         }
       }
@@ -935,7 +943,7 @@ function applyDCEGraphRemovals(ast) {
 
 // Need a parser to pass to acorn.Node constructor.
 // Create it once and reuse it.
-var stubParser = new acorn.Parser();
+var stubParser = new acorn.Parser({ecmaVersion: 2020})
 
 function createNode(props) {
   var node = new acorn.Node(stubParser);
