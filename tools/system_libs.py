@@ -757,6 +757,13 @@ class libc(AsanInstrumentedLibrary, MuslInternalLibrary, MTLibrary):
         path_components=['system', 'lib', 'pthread'],
         filenames=[
           'library_pthread.c',
+          'pthread_create.c',
+          'pthread_detach.c',
+          'pthread_join.c',
+          'pthread_testcancel.c',
+          'pthread_getattr_np.c',
+          'pthread_setcancelstate.c',
+          'emscripten_proxy_main.c',
           'emscripten_thread_state.s',
         ])
     else:

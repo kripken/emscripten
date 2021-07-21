@@ -33,14 +33,6 @@
 
 #include <emscripten.h>
 #include <emscripten/threading.h>
-#include <emscripten/stack.h>
-
-// With LLVM 3.6, C11 is the default compilation mode.
-// gets() is deprecated under that standard, but emcc
-// still provides it, so always include it in the build.
-#if __STDC_VERSION__ >= 201112L
-char* gets(char*);
-#endif
 
 // Extra pthread_attr_t field:
 #define _a_transferredcanvases __u.__s[9]
@@ -99,37 +91,6 @@ int pthread_mutexattr_setprioceiling(pthread_mutexattr_t *attr, int prioceiling)
 {
   // Not supported either in Emscripten or musl, return an error.
   return EPERM;
-}
-
-int pthread_setcancelstate(int new, int* old) {
-  if (new > 1U)
-    return EINVAL;
-  struct pthread* self = pthread_self();
-  if (old)
-    *old = self->canceldisable;
-  self->canceldisable = new;
-  return 0;
-}
-
-int _pthread_isduecanceled(struct pthread* pthread_ptr) {
-  return pthread_ptr->threadStatus == 2 /*canceled*/;
-}
-
-void __pthread_testcancel() {
-  struct pthread* self = pthread_self();
-  if (self->canceldisable)
-    return;
-  if (_pthread_isduecanceled(self)) {
-    EM_ASM(throw 'Canceled!');
-  }
-}
-
-int pthread_getattr_np(pthread_t t, pthread_attr_t* a) {
-  *a = (pthread_attr_t){0};
-  a->_a_detach = !!t->detached;
-  a->_a_stackaddr = (uintptr_t)t->stack;
-  a->_a_stacksize = t->stack_size - DEFAULT_STACK_SIZE;
-  return 0;
 }
 
 static uint32_t dummyZeroAddress = 0;
@@ -915,95 +876,3 @@ int _emscripten_call_on_thread(
 // Stores the memory address that the main thread is waiting on, if any. If
 // the main thread is waiting, we wake it up before waking up any workers.
 EMSCRIPTEN_KEEPALIVE void* _emscripten_main_thread_futex;
-
-static int _main_argc;
-static char** _main_argv;
-
-extern int __call_main(int argc, char** argv);
-
-static void* _main_thread(void* param) {
-  // This is the main runtime thread for the application.
-  emscripten_set_thread_name(pthread_self(), "Application main thread");
-  return (void*)__call_main(_main_argc, _main_argv);
-}
-
-int emscripten_proxy_main(int argc, char** argv) {
-  pthread_attr_t attr;
-  pthread_attr_init(&attr);
-  // Use the size of the current stack, which is the normal size of the stack
-  // that main() would have without PROXY_TO_PTHREAD.
-  pthread_attr_setstacksize(&attr, emscripten_stack_get_base() - emscripten_stack_get_end());
-  // Pass special ID -1 to the list of transferred canvases to denote that the thread creation
-  // should instead take a list of canvases that are specified from the command line with
-  // -s OFFSCREENCANVASES_TO_PTHREAD linker flag.
-  emscripten_pthread_attr_settransferredcanvases(&attr, (const char*)-1);
-  _main_argc = argc;
-  _main_argv = argv;
-  pthread_t thread;
-  int rc = pthread_create(&thread, &attr, _main_thread, NULL);
-  pthread_attr_destroy(&attr);
-  return rc;
-}
-
-weak_alias(__pthread_testcancel, pthread_testcancel);
-
-// See musl's pthread_create.c
-void __run_cleanup_handlers(void* _unused) {
-  pthread_t self = __pthread_self();
-  while (self->cancelbuf) {
-    void (*f)(void *) = self->cancelbuf->__f;
-    void *x = self->cancelbuf->__x;
-    self->cancelbuf = self->cancelbuf->__next;
-    f(x);
-  }
-}
-
-extern int __cxa_thread_atexit(void (*)(void *), void *, void *);
-
-extern int8_t __dso_handle;
-
-// Copied from musl's pthread_create.c
-void __do_cleanup_push(struct __ptcb *cb) {
-  struct pthread *self = __pthread_self();
-  cb->__next = self->cancelbuf;
-  self->cancelbuf = cb;
-  static thread_local bool registered = false;
-  if (!registered) {
-    __cxa_thread_atexit(__run_cleanup_handlers, NULL, &__dso_handle);
-    registered = true;
-  }
-}
-
-// Copied from musl's pthread_create.c
-void __do_cleanup_pop(struct __ptcb *cb) {
-  __pthread_self()->cancelbuf = cb->__next;
-}
-
-extern int __pthread_create_js(pthread_t *thread, const pthread_attr_t *attr, void *(*start_routine) (void *), void *arg);
-int __pthread_create(pthread_t *thread, const pthread_attr_t *attr, void *(*start_routine) (void *), void *arg) {
-  return __pthread_create_js(thread, attr, start_routine, arg);
-}
-weak_alias(__pthread_create, emscripten_builtin_pthread_create);
-weak_alias(__pthread_create, pthread_create);
-
-extern int __pthread_join_js(pthread_t thread, void **retval);
-int __pthread_join(pthread_t thread, void **retval) {
-  return __pthread_join_js(thread, retval);
-}
-weak_alias(__pthread_join, emscripten_builtin_pthread_join);
-weak_alias(__pthread_join, pthread_join);
-
-extern int __pthread_detach_js(pthread_t t);
-int __pthread_detach(pthread_t t) {
-  return __pthread_detach_js(t);
-}
-weak_alias(__pthread_detach, emscripten_builtin_pthread_detach);
-weak_alias(__pthread_detach, pthread_detach);
-weak_alias(__pthread_detach, thrd_detach);
-
-extern _Noreturn void __pthread_exit_js(void* status);
-_Noreturn void __pthread_exit(void* status) {
-   __pthread_exit_js(status);
-}
-weak_alias(__pthread_exit, pthread_exit);
-
