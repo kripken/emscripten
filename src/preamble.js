@@ -1170,6 +1170,10 @@ function createWasm() {
             err('falling back to ArrayBuffer instantiation');
             return instantiateArrayBuffer(receiveInstantiationResult);
           });
+      }).catch(function(error) {
+        err("could not download wasm file");
+        err("falling back to ArrayBuffer instantiation");
+        return instantiateArrayBuffer(receiveInstantiatedSource);
       });
     } else {
       return instantiateArrayBuffer(receiveInstantiationResult);
