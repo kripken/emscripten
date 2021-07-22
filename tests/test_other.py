@@ -709,6 +709,40 @@ f.close()
     self.run_process(['cmake', '--build', 'build2'])
     self.assertContained('foo: 42\n', self.run_js('build2/Bar.js'))
 
+  def test_emcmake_cmake_commands(self):
+    # Test configuring, building, and installing all with EMCmake.
+    os.mkdir('build1')
+    self.run_process([EMCMAKE, 'cmake', test_file('cmake/install_lib')], cwd='build1')
+    self.run_process([EMCMAKE, 'cmake', '--build', 'build1'])
+    self.run_process([EMCMAKE, 'cmake', '--build', 'build1', '--target', 'install'])
+
+    # Test --version and --help, and get the CMake version info.
+    self.run_process([EMCMAKE, 'cmake', '--help'])
+    proc = self.run_process([EMCMAKE, 'cmake', '--version'], stdout=PIPE)
+    match = re.search(r'cmake version (\d+)\.(\d+)(?:\.(\d+))?', proc.stdout)
+    assert match is not None
+    version = (int(match.group(1)), int(match.group(2)), int(match.group(3) or '0'))
+    # Starting with CMake 3.15, we can use use `--install`
+    if version >= (3, 15, 0):
+      self.run_process([EMCMAKE, 'cmake', '--install', 'build1'])
+
+    # Test less common commands.
+    # Skip `--open`, since this opens the project in an associated
+    #   application, which will be platform dependent.
+    # Likewise, skip `--find-package`, since it's deprecated and
+    #   should never be used in new projects.
+    # We need to use `capabilities`, and not just `true`, because
+    # most commands expect arguments, but `true` will always return a 0
+    # exit code.
+    self.run_process([EMCMAKE, 'cmake', '-E', 'capabilities'])
+
+    # Test a script with a few defines.
+    # This takes the format `cmake -D.... -P <script>`.
+    with open('build1/hello_defines.txt', 'w') as file:
+      print('message("Hello world!")', file=file)
+      print('message(STATUS "${MYDEF}")', file=file)
+    self.run_process([EMCMAKE, 'cmake', '-DMYDEF=1', '-P', 'build1/hello_defines.txt'])
+
   def test_system_include_paths(self):
     # Verify that all default include paths are within `emscripten/system`
 
